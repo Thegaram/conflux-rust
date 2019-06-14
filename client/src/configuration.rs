@@ -105,6 +105,9 @@ build_config! {
         (min_peers_propagation, (usize), 8)
         (max_peers_propagation, (usize), 128)
         (txgen_account_count, (usize), 10)
+        (enable_epoch_sync, (bool), true)
+        (epoch_sync_max_inflight, (u64), 10)
+        (epoch_sync_stride, (u64), 30)
     }
     {
         (
@@ -321,6 +324,9 @@ impl Configuration {
                 .max_trans_count_received_in_catch_up,
             min_peers_propagation: self.raw_conf.min_peers_propagation,
             max_peers_propagation: self.raw_conf.max_peers_propagation,
+            enable_epoch_sync: self.raw_conf.enable_epoch_sync,
+            epoch_sync_max_inflight: self.raw_conf.epoch_sync_max_inflight,
+            epoch_sync_stride: self.raw_conf.epoch_sync_stride,
         }
     }
 

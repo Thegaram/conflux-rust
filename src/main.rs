@@ -249,6 +249,27 @@ fn main() {
                 .takes_value(true)
                 .validator(from_str_validator::<usize>),
         )
+        .arg(
+            Arg::with_name("enable-epoch-sync")
+                .long("enable-epoch-sync")
+                .value_name("BOOL")
+                .help("---")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("epoch-sync-max-inflight")
+                .long("epoch-sync-max-inflight")
+                .value_name("VALUE")
+                .help("---")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("epoch-sync-stride")
+                .long("epoch-sync-stride")
+                .value_name("VALUE")
+                .help("---")
+                .takes_value(true),
+        )
         .get_matches_from(std::env::args().collect::<Vec<_>>());
 
     let conf = Configuration::parse(&matches).unwrap();

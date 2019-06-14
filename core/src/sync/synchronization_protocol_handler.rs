@@ -80,11 +80,10 @@ const TOTAL_WEIGHT_IN_PAST_TIMER: TimerToken = 5;
 const MAX_TXS_BYTES_TO_PROPAGATE: usize = 1024 * 1024; // 1MB
 
 pub const EPOCH_RETRY_TIME_SECONDS: u64 = 1;
-const EPOCH_SYNC_MAX_INFLIGHT: u64 = 20;
 
-// make sure we do not request overlapping regions of the DAG
+const ENABLE_EPOCH_SYNC: bool = false;
+const EPOCH_SYNC_MAX_INFLIGHT: u64 = 20;
 const EPOCH_SYNC_STRIDE: u64 = DEFAULT_GET_PARENT_HEADERS_NUM;
-// const EPOCH_SYNC_STRIDE: u64 = 1;
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
 enum SyncHandlerWorkType {
@@ -129,6 +128,9 @@ pub struct ProtocolConfiguration {
     pub max_trans_count_received_in_catch_up: u64,
     pub min_peers_propagation: usize,
     pub max_peers_propagation: usize,
+    pub enable_epoch_sync: bool,
+    pub epoch_sync_max_inflight: u64,
+    pub epoch_sync_stride: u64,
 }
 
 impl SynchronizationProtocolHandler {
@@ -1057,11 +1059,11 @@ impl SynchronizationProtocolHandler {
     }
 
     fn start_sync(&self, io: &NetworkContext) {
-        // if self.catch_up_mode() {
-            // self.request_epochs(io);
-        // } else {
+        if self.catch_up_mode() && self.protocol_config.enable_epoch_sync {
+            self.request_epochs(io);
+        } else {
             self.request_missing_terminals(io);
-        // }
+        }
     }
 
     fn request_missing_terminals(&self, io: &NetworkContext) {
@@ -1105,7 +1107,7 @@ impl SynchronizationProtocolHandler {
         let best_peer_epoch = self.best_peer_epoch().unwrap_or(0);
 
         while self.request_manager.num_epochs_in_flight()
-            < EPOCH_SYNC_MAX_INFLIGHT
+            < self.protocol_config.epoch_sync_max_inflight
             && *latest_requested < best_peer_epoch
         {
             let next = {
@@ -1113,10 +1115,10 @@ impl SynchronizationProtocolHandler {
                 let last = (*latest_requested).max(my_best_epoch);
 
                 // request one-by-one near the end to avoid getting stuck
-                let stride = if last + EPOCH_SYNC_STRIDE > best_peer_epoch {
+                let stride = if last + self.protocol_config.epoch_sync_stride > best_peer_epoch {
                     1
                 } else {
-                    EPOCH_SYNC_STRIDE
+                    self.protocol_config.epoch_sync_stride
                 };
 
                 (last + stride).min(best_peer_epoch)
@@ -1141,7 +1143,7 @@ impl SynchronizationProtocolHandler {
 
         debug_assert!(
             self.request_manager.num_epochs_in_flight()
-                <= EPOCH_SYNC_MAX_INFLIGHT
+                <= self.protocol_config.epoch_sync_max_inflight
         );
     }
 
