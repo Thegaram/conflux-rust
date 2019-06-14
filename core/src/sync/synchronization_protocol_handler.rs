@@ -80,10 +80,11 @@ const TOTAL_WEIGHT_IN_PAST_TIMER: TimerToken = 5;
 const MAX_TXS_BYTES_TO_PROPAGATE: usize = 1024 * 1024; // 1MB
 
 pub const EPOCH_RETRY_TIME_SECONDS: u64 = 1;
-const EPOCH_SYNC_MAX_INFLIGHT: u64 = 10;
+const EPOCH_SYNC_MAX_INFLIGHT: u64 = 20;
 
 // make sure we do not request overlapping regions of the DAG
 const EPOCH_SYNC_STRIDE: u64 = DEFAULT_GET_PARENT_HEADERS_NUM;
+// const EPOCH_SYNC_STRIDE: u64 = 1;
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
 enum SyncHandlerWorkType {
@@ -103,6 +104,9 @@ pub struct SynchronizationProtocolHandler {
     syn: Arc<SynchronizationState>,
     request_manager: Arc<RequestManager>,
     latest_epoch_requested: Mutex<u64>,
+
+    header_duplicate_count: Mutex<u64>,
+    block_duplicate_count: Mutex<u64>,
 
     // Worker task queue for recover public
     recover_public_queue: Mutex<VecDeque<RecoverPublicTask>>,
@@ -151,6 +155,8 @@ impl SynchronizationProtocolHandler {
             syn,
             request_manager,
             latest_epoch_requested: Mutex::new(0),
+            header_duplicate_count: Mutex::new(0),
+            block_duplicate_count: Mutex::new(0),
             recover_public_queue: Mutex::new(VecDeque::new()),
         }
     }
@@ -1051,11 +1057,11 @@ impl SynchronizationProtocolHandler {
     }
 
     fn start_sync(&self, io: &NetworkContext) {
-        if self.catch_up_mode() {
-            self.request_epochs(io);
-        } else {
+        // if self.catch_up_mode() {
+            // self.request_epochs(io);
+        // } else {
             self.request_missing_terminals(io);
-        }
+        // }
     }
 
     fn request_missing_terminals(&self, io: &NetworkContext) {
@@ -1165,6 +1171,20 @@ impl SynchronizationProtocolHandler {
             trace!("Received empty GetBlockHeadersResponse message");
             return Ok(());
         }
+
+        ///////////////////
+        {
+            let mut count = self.header_duplicate_count.lock();
+            for h in block_headers.headers.clone() {
+                if self.graph.contains_block_header(&h.hash()) {
+                    *count += 1;
+                }
+            }
+        }
+        // if count > 0 {
+        //     info!("Received {:?} duplicate block headers!", count);
+        // }
+        ///////////////////
 
         let mut parent_hash = H256::default();
         let mut parent_height = 0;
@@ -1293,6 +1313,21 @@ impl SynchronizationProtocolHandler {
                 return Err(ErrorKind::UnexpectedResponse.into());
             }
         };
+
+        ///////////////////
+        {
+            let mut count = self.block_duplicate_count.lock();
+            for b in blocks.blocks.clone() {
+                if self.graph.contains_block(&b.hash()) {
+                    *count += 1;
+                }
+            }
+        }
+        // if count > 0 {
+        //     info!("Received {:?} duplicate blocks!", count);
+        // }
+        ///////////////////
+
         let requested_blocks: HashSet<H256> =
             req_hashes_vec.into_iter().collect();
         self.dispatch_recover_public_task(
@@ -2013,6 +2048,7 @@ impl SynchronizationProtocolHandler {
         let catch_up_mode = self.graph.best_epoch_number()
             + CATCH_UP_EPOCH_LAG_THRESHOLD
             < middle_epoch;
+
         self.syn
             .catch_up_mode
             .store(catch_up_mode, AtomicOrdering::Relaxed);
@@ -2033,6 +2069,16 @@ impl SynchronizationProtocolHandler {
             catch_up_mode,
             self.graph.best_epoch_number()
         );
+
+        if !catch_up_mode {
+            let blocks = self.graph.block_count();
+            let hdupl = *self.header_duplicate_count.lock();
+            let bdupl = *self.block_duplicate_count.lock();
+            info!(
+                "blocks = {:?}, dupl headers = {:?} ({:.3}%), dupl blocks = {:?} ({:.3}%)",
+                blocks, hdupl, (hdupl as f64 / blocks as f64), bdupl, (bdupl as f64 / blocks as f64),
+            );
+        }
 
         let trans_prop_ctrl_msg: Box<dyn Message> =
             Box::new(TransactionPropagationControl { catch_up_mode });
