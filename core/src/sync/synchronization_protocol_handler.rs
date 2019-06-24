@@ -62,8 +62,7 @@ pub const SYNCHRONIZATION_PROTOCOL_VERSION: u8 = 0x01;
 pub const MAX_HEADERS_TO_SEND: u64 = 512;
 pub const MAX_BLOCKS_TO_SEND: u64 = 256;
 const MAX_PACKET_SIZE: usize = 15 * 1024 * 1024 + 512 * 1024; // 15.5 MB
-const DEFAULT_GET_HEADERS_NUM: u64 = 1;
-const DEFAULT_GET_PARENT_HEADERS_NUM: u64 = 30;
+
 lazy_static! {
     pub static ref REQUEST_START_WAITING_TIME: Duration =
         Duration::from_secs(1);
@@ -80,10 +79,8 @@ const TOTAL_WEIGHT_IN_PAST_TIMER: TimerToken = 5;
 const MAX_TXS_BYTES_TO_PROPAGATE: usize = 1024 * 1024; // 1MB
 
 pub const EPOCH_RETRY_TIME_SECONDS: u64 = 1;
-const EPOCH_SYNC_MAX_INFLIGHT: u64 = 10;
-
-// make sure we do not request overlapping regions of the DAG
-const EPOCH_SYNC_STRIDE: u64 = DEFAULT_GET_PARENT_HEADERS_NUM;
+const EPOCH_SYNC_MAX_INFLIGHT: u64 = 200;
+const EPOCH_SYNC_BATCH_SIZE: u64 = 30;
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
 enum SyncHandlerWorkType {
@@ -103,6 +100,9 @@ pub struct SynchronizationProtocolHandler {
     syn: Arc<SynchronizationState>,
     request_manager: Arc<RequestManager>,
     latest_epoch_requested: Mutex<u64>,
+
+    duplicate_header_count: Mutex<u64>,
+    duplicate_block_count: Mutex<u64>,
 
     // Worker task queue for recover public
     recover_public_queue: Mutex<VecDeque<RecoverPublicTask>>,
@@ -154,6 +154,8 @@ impl SynchronizationProtocolHandler {
             request_manager,
             latest_epoch_requested: Mutex::new(0),
             recover_public_queue: Mutex::new(VecDeque::new()),
+            duplicate_header_count: Mutex::new(0),
+            duplicate_block_count: Mutex::new(0),
         }
     }
 
@@ -821,27 +823,15 @@ impl SynchronizationProtocolHandler {
         let req = rlp.as_val::<GetBlockHeaders>()?;
         debug!("on_get_block_headers, msg=:{:?}", req);
 
-        let mut hash = req.hash;
+        let headers = req
+            .hashes
+            .iter()
+            .filter_map(|hash| self.graph.block_header_by_hash(&hash))
+            .collect();
+
         let mut block_headers_resp = GetBlockHeadersResponse::default();
         block_headers_resp.set_request_id(req.request_id());
-
-        for _n in 0..cmp::min(MAX_HEADERS_TO_SEND, req.max_blocks) {
-            let header = self.graph.block_header_by_hash(&hash);
-            if header.is_none() {
-                break;
-            }
-            let header = header.unwrap();
-            block_headers_resp.headers.push(header.clone());
-            if hash == self.graph.genesis_hash() {
-                break;
-            }
-            hash = header.parent_hash().clone();
-        }
-        debug!(
-            "Returned {:?} block headers to peer {:?}",
-            block_headers_resp.headers.len(),
-            peer
-        );
+        block_headers_resp.headers = headers;
 
         let msg: Box<dyn Message> = Box::new(block_headers_resp);
         send_message(io, peer, msg.as_ref(), SendQueuePriority::High)?;
@@ -998,8 +988,7 @@ impl SynchronizationProtocolHandler {
                 self.request_manager.request_block_headers(
                     io,
                     Some(peer),
-                    hash,
-                    DEFAULT_GET_HEADERS_NUM,
+                    vec![*hash],
                 );
             }
         }
@@ -1010,10 +999,12 @@ impl SynchronizationProtocolHandler {
         &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
     ) -> Result<(), Error> {
         let req = rlp.as_val::<GetBlockHashesByEpoch>()?;
-        debug!("on_get_block_hashes_by_epoch, msg=:{:?}", req);
+        info!("on_get_block_hashes_by_epoch, msg=:{:?}", req);
 
-        let hashes = self.graph.get_block_hashes_by_epoch(req.epoch_number)?;
-        debug!("on_get_block_hashes_by_epoch, hashes=:{:?}", hashes);
+        let hashes = req.epochs.iter()
+            .map(|&e| self.graph.get_block_hashes_by_epoch(e))
+            .filter_map(Result::ok)
+            .fold(vec![], |mut res, sub| { res.extend(sub); res });
 
         let msg: Box<dyn Message> = Box::new(GetBlockHashesResponse {
             request_id: req.request_id().into(),
@@ -1021,6 +1012,19 @@ impl SynchronizationProtocolHandler {
         });
         send_message(io, peer, msg.as_ref(), SendQueuePriority::High)?;
         Ok(())
+
+        // let headers = hashes
+        //     .iter()
+        //     .filter_map(|hash| self.graph.block_header_by_hash(&hash))
+        //     .collect();
+
+        // let mut block_headers_resp = GetBlockHeadersResponse::default();
+        // block_headers_resp.set_request_id(req.request_id());
+        // block_headers_resp.headers = headers;
+
+        // let msg: Box<dyn Message> = Box::new(block_headers_resp);
+        // send_message(io, peer, msg.as_ref(), SendQueuePriority::High)?;
+        // Ok(())
     }
 
     fn on_block_hashes_response(
@@ -1029,14 +1033,21 @@ impl SynchronizationProtocolHandler {
         let resp = rlp.as_val::<GetBlockHashesResponse>()?;
         debug!("on_block_hashes_response, msg={:?}", resp);
 
+        info!("GOT HASHES: {:?}", resp.hashes);
+
         let req =
             self.request_manager
                 .match_request(io, peer, resp.request_id())?;
 
         match req {
             RequestMessage::Epochs(epoch_req) => {
-                self.request_manager
-                    .epoch_received(io, epoch_req.epoch_number);
+                // TODO
+                self.request_manager.epochs_received(
+                    io,
+                    epoch_req.epochs.clone().into_iter().collect(),
+                    epoch_req.epochs.clone().into_iter().collect(),
+                );
+                // assume we received everything
             }
             _ => {
                 warn!("Get response not matching the request! req={:?}, resp={:?}", req, resp);
@@ -1045,33 +1056,23 @@ impl SynchronizationProtocolHandler {
             }
         };
 
-        // NOTE: We may still follow the rule of requesting header
-        // before requesting block even in catch-up mode.
-        // request missing blocks
-        //let missing_blocks: Vec<H256> = resp
-        //    .hashes
-        //    .iter()
-        //    .filter(|h| !self.graph.contains_block(&h))
-        //    .cloned()
-        //    .collect();
-
-        //debug!("requesting missing blocks: {:?}", missing_blocks);
-        //self.request_blocks(io, Some(peer), missing_blocks);
-
         // request missing headers
-        let missing_headers = resp
-            .hashes
-            .iter()
-            .filter(|h| !self.graph.contains_block_header(&h));
-
         // NOTE: this is to make sure no section of the DAG is skipped
         // e.g. if the request for epoch 4 is lost or the reply is in-
         // correct, the request for epoch 5 should recursively request
         // all dependent blocks (see on_block_headers_response)
-        missing_headers.for_each(|h| {
-            self.request_manager
-                .request_block_headers(io, Some(peer), h, 1);
-        });
+        let missing_headers = resp
+            .hashes
+            .iter()
+            .filter(|h| !self.graph.contains_block_header(&h))
+            .cloned()
+            .collect();
+
+        self.request_manager.request_block_headers(
+            io,
+            Some(peer),
+            missing_headers,
+        );
 
         // TODO: handle empty response
 
@@ -1137,6 +1138,7 @@ impl SynchronizationProtocolHandler {
     fn request_missing_terminals(&self, io: &NetworkContext) {
         let peers: Vec<PeerId> =
             self.syn.peers.read().keys().cloned().collect();
+
         let mut requested = HashSet::new();
 
         for peer in peers {
@@ -1148,19 +1150,21 @@ impl SynchronizationProtocolHandler {
                     ts
                 };
 
-                for t in terminals {
-                    if !requested.contains(&t)
-                        && !self.graph.contains_block_header(&t)
-                    {
-                        self.request_manager.request_block_headers(
-                            io,
-                            Some(peer),
-                            &t,
-                            DEFAULT_GET_HEADERS_NUM,
-                        );
-                        requested.insert(t);
-                    }
-                }
+                let to_request = terminals
+                    .difference(&requested)
+                    .filter(|h| !self.graph.contains_block_header(&h))
+                    .cloned()
+                    .collect::<Vec<H256>>();
+
+                info!("Requesting terminals {:?}", to_request);
+
+                self.request_manager.request_block_headers(
+                    io,
+                    Some(peer),
+                    to_request.clone(),
+                );
+
+                requested.extend(to_request);
             }
         }
 
@@ -1173,40 +1177,45 @@ impl SynchronizationProtocolHandler {
         // make sure only one thread can request new epochs at a time
         let mut latest_requested = self.latest_epoch_requested.lock();
         let best_peer_epoch = self.best_peer_epoch().unwrap_or(0);
+        let my_best_epoch = self.graph.best_epoch_number();
 
         while self.request_manager.num_epochs_in_flight()
             < EPOCH_SYNC_MAX_INFLIGHT
             && *latest_requested < best_peer_epoch
         {
-            let next = {
-                let my_best_epoch = self.graph.best_epoch_number();
-                let last = (*latest_requested).max(my_best_epoch);
-
-                // request one-by-one near the end to avoid getting stuck
-                let stride = if last + EPOCH_SYNC_STRIDE > best_peer_epoch {
-                    1
-                } else {
-                    EPOCH_SYNC_STRIDE
-                };
-
-                (last + stride).min(best_peer_epoch)
-            };
+            let from = cmp::max(my_best_epoch, *latest_requested) + 1;
 
             let peer = self.syn.get_random_peer_satisfying(|peer| {
                 match self.syn.get_peer_info(&peer) {
                     Err(_) => false,
-                    Ok(info) => info.read().best_epoch >= next,
+                    Ok(info) => info.read().best_epoch >= from,
                 }
             });
 
-            debug!(
-                "requesting epoch {:?}/{:?} from peer {:?}",
-                next, best_peer_epoch, peer
+            let until = {
+                let max_to_send = EPOCH_SYNC_MAX_INFLIGHT
+                    - self.request_manager.num_epochs_in_flight();
+
+                let best_of_this_peer = self
+                    .syn
+                    .get_peer_info(&peer.unwrap())
+                    .unwrap()
+                    .read()
+                    .best_epoch;
+
+                let until = from + cmp::min(EPOCH_SYNC_BATCH_SIZE, max_to_send);
+                cmp::min(until, best_of_this_peer + 1)
+            };
+
+            let epochs = (from..until).collect::<Vec<u64>>();
+
+            info!(
+                "requesting epochs {:?}/{:?} from peer {:?}",
+                epochs, best_peer_epoch, peer
             );
 
-            self.request_manager.request_epoch_hashes(io, peer, next);
-
-            *latest_requested = next;
+            self.request_manager.request_epoch_hashes(io, peer, epochs);
+            *latest_requested = until - 1;
         }
 
         debug_assert!(
@@ -1218,115 +1227,129 @@ impl SynchronizationProtocolHandler {
     fn on_block_headers_response(
         &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
     ) -> Result<(), Error> {
+        // check request validity
         let mut block_headers = rlp.as_val::<GetBlockHeadersResponse>()?;
         debug!("on_block_headers_response, msg=:{:?}", block_headers);
-        let req = self.request_manager.match_request(
-            io,
-            peer,
-            block_headers.request_id(),
-        )?;
-        let (req_hash, max_blocks) = match &req {
-            RequestMessage::Headers(header_req) => {
-                (header_req.hash, header_req.max_blocks)
+
+        let headers = block_headers
+            .headers
+            .iter()
+            .map(|h| h.hash())
+            .collect::<Vec<H256>>();
+        info!("GOT HEADERS: {:?}", headers);
+
+        for h in &block_headers.headers {
+            if self.graph.contains_block_header(&h.hash()) {
+                *self.duplicate_header_count.lock() += 1
             }
+        }
+
+        let id = block_headers.request_id();
+        let req = self.request_manager.match_request(io, peer, id)?;
+
+        let req_hashes = match &req {
+            RequestMessage::Headers(header_req) => &header_req.hashes,
             _ => {
-                warn!("Get response not matching the request! req={:?}, resp={:?}", req, block_headers);
+                warn!(
+                    "Get response not matching the request! req={:?}, resp={:?}",
+                    req, block_headers
+                );
                 self.request_manager.remove_mismatch_request(io, &req);
                 return Err(ErrorKind::UnexpectedResponse.into());
             }
         };
 
-        let mut parent_hash = H256::default();
-        let mut parent_height = 0;
-        let mut hashes = Vec::default();
-        let mut dependent_hashes = Vec::new();
-        let mut need_to_relay = Vec::new();
+        // process request
+        let valid_headers =
+            block_headers.headers.iter_mut().filter_map(|header| {
+                let (valid, to_relay) =
+                    self.graph.insert_block_header(header, true, false);
+                if valid {
+                    Some((header, to_relay))
+                } else {
+                    None
+                }
+            });
+
+        let mut headers_to_request = HashSet::new();
+        let mut blocks_to_request = HashSet::new();
+        let mut headers_to_relay = HashSet::new();
         let mut returned_headers = HashSet::new();
 
-        for header in &mut block_headers.headers {
+        for (header, to_relay) in valid_headers {
             let hash = header.hash();
-            if parent_hash != H256::default() && parent_hash != hash {
-                return Err(ErrorKind::Invalid.into());
-            }
             returned_headers.insert(hash);
-            parent_hash = header.parent_hash().clone();
-            parent_height = header.height();
 
-            let res = self.graph.insert_block_header(header, true, false);
+            // check missing dependencies
+            let parent = header.parent_hash();
+            if !self.graph.contains_block_header(parent) {
+                headers_to_request.insert(*parent);
+            }
 
-            if res.0 {
-                // Valid block based on header
-                if !self.graph.contains_block(&hash) {
-                    hashes.push(hash);
-                }
-                need_to_relay.extend(res.1);
-                for referee in header.referee_hashes() {
-                    dependent_hashes.push(*referee);
+            for referee in header.referee_hashes() {
+                if !self.graph.contains_block_header(referee) {
+                    headers_to_request.insert(*referee);
                 }
             }
+
+            // check block body
+            if !self.graph.contains_block(&hash) {
+                blocks_to_request.insert(hash);
+            }
+
+            // check relay
+            headers_to_relay.extend(to_relay);
         }
-        dependent_hashes.push(parent_hash);
+
+        assert!(!headers_to_request.contains(&H256::default()));
 
         debug!(
             "get headers response of hashes:{:?}, requesting block:{:?}",
-            returned_headers, hashes
+            returned_headers, blocks_to_request
         );
-        self.request_manager.header_received(
+
+        self.request_manager.headers_received(
             io,
-            &req_hash,
-            max_blocks,
+            req_hashes.into_iter().cloned().collect(),
             returned_headers,
         );
 
-        for past_hash in &dependent_hashes {
-            if *past_hash != H256::default()
-                && !self.graph.contains_block_header(past_hash)
-            {
-                let num = if *past_hash == parent_hash {
-                    let current_height =
-                        self.graph.consensus.best_epoch_number() as u64;
-                    // Without fork, we only need to request missing blocks
-                    // since current_height
-                    if parent_height > current_height {
-                        cmp::min(
-                            DEFAULT_GET_PARENT_HEADERS_NUM,
-                            parent_height - current_height,
-                        )
-                    } else {
-                        DEFAULT_GET_HEADERS_NUM
-                    }
-                } else {
-                    DEFAULT_GET_HEADERS_NUM
-                };
-                self.request_manager.request_block_headers(
-                    io,
-                    Some(peer),
-                    past_hash,
-                    num,
-                );
-            }
-        }
+        // request missing headers
+        info!("Requesting {} missing headers", headers_to_request.len());
+        self.request_manager.request_block_headers(
+            io,
+            Some(peer),
+            headers_to_request.into_iter().collect(),
+        );
 
         let catch_up_mode = self.catch_up_mode();
 
-        if !hashes.is_empty() {
+        // request missing blocks
+        if !blocks_to_request.is_empty() {
             // FIXME: This is a naive strategy. Need to
             // make it more sophisticated.
             if catch_up_mode {
-                self.request_blocks(io, Some(peer), hashes);
+                self.request_blocks(
+                    io,
+                    Some(peer),
+                    blocks_to_request.into_iter().collect(),
+                );
             } else {
                 self.request_manager.request_compact_blocks(
                     io,
                     Some(peer),
-                    hashes,
+                    blocks_to_request.into_iter().collect(),
                 );
             }
         }
 
-        if !need_to_relay.is_empty() && !catch_up_mode {
+        // relay if necessary
+        if !headers_to_relay.is_empty() && !catch_up_mode {
+            let headers_to_relay =
+                headers_to_relay.iter().map(|h| h.clone()).collect();
             let new_block_hash_msg: Box<dyn Message> =
                 Box::new(NewBlockHashes {
-                    block_hashes: need_to_relay,
+                    block_hashes: headers_to_relay,
                 });
             self.broadcast_message(
                 io,
@@ -1363,6 +1386,13 @@ impl SynchronizationProtocolHandler {
                 return Err(ErrorKind::UnexpectedResponse.into());
             }
         };
+
+        for b in &blocks.blocks {
+            if self.graph.contains_block(&b.block_header.hash()) {
+                *self.duplicate_block_count.lock() += 1
+            }
+        }
+
         let requested_blocks: HashSet<H256> =
             req_hashes_vec.into_iter().collect();
         self.dispatch_recover_public_task(
@@ -1566,30 +1596,23 @@ impl SynchronizationProtocolHandler {
         let parent_hash = block.block_header.parent_hash().clone();
         let referee_hashes = block.block_header.referee_hashes().clone();
 
-        let need_to_relay = self.on_new_decoded_block(block, true, true)?;
+        let headers_to_request = std::iter::once(parent_hash)
+            .chain(referee_hashes)
+            .filter(|h| {
+                debug_assert!(!self.graph.verified_invalid(&h));
+                !self.graph.contains_block_header(&parent_hash)
+            })
+            .collect();
 
-        debug_assert!(!self.graph.verified_invalid(&parent_hash));
-        if !self.graph.contains_block_header(&parent_hash) {
-            self.request_manager.request_block_headers(
-                io,
-                Some(peer),
-                &parent_hash,
-                DEFAULT_GET_HEADERS_NUM,
-            );
-        }
-        for hash in referee_hashes {
-            debug_assert!(!self.graph.verified_invalid(&hash));
-            if !self.graph.contains_block_header(&hash) {
-                self.request_manager.request_block_headers(
-                    io,
-                    Some(peer),
-                    &hash,
-                    DEFAULT_GET_HEADERS_NUM,
-                );
-            }
-        }
+        self.request_manager.request_block_headers(
+            io,
+            Some(peer),
+            headers_to_request,
+        );
 
         // broadcast the hash of the newly got block
+        let need_to_relay = self.on_new_decoded_block(block, true, true)?;
+
         if !need_to_relay.is_empty() && !self.catch_up_mode() {
             let new_block_hash_msg: Box<dyn Message> =
                 Box::new(NewBlockHashes {
@@ -1621,16 +1644,19 @@ impl SynchronizationProtocolHandler {
             return Ok(());
         }
 
-        for hash in new_block_hashes.block_hashes.iter() {
-            if !self.graph.contains_block_header(hash) {
-                self.request_manager.request_block_headers(
-                    io,
-                    Some(peer),
-                    hash,
-                    DEFAULT_GET_HEADERS_NUM,
-                );
-            }
-        }
+        let headers_to_request = new_block_hashes
+            .block_hashes
+            .iter()
+            .filter(|hash| !self.graph.contains_block_header(&hash))
+            .cloned()
+            .collect();
+
+        self.request_manager.request_block_headers(
+            io,
+            Some(peer),
+            headers_to_request,
+        );
+
         Ok(())
     }
 
@@ -2077,10 +2103,16 @@ impl SynchronizationProtocolHandler {
                 need_notify.push(*peer);
             }
         }
+
+        let duplicate_header_count = *self.duplicate_header_count.lock();
+        let duplicate_block_count = *self.duplicate_block_count.lock();
+
         info!(
-            "Catch-up mode: {}, latest epoch: {}",
+            "Catch-up mode: {}, latest epoch: {}, dh: {}, db: {}",
             catch_up_mode,
-            self.graph.best_epoch_number()
+            self.graph.best_epoch_number(),
+            duplicate_header_count,
+            duplicate_block_count,
         );
 
         let trans_prop_ctrl_msg: Box<dyn Message> =
