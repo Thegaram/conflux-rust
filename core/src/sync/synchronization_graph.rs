@@ -1218,6 +1218,13 @@ impl SynchronizationGraph {
             .get_block_hashes_by_epoch(EpochNumber::Number(epoch_number.into()))
     }
 
+    pub fn get_block_hashes_by_epochs(
+        &self, epoch_numbers: &Vec<u64>,
+    ) -> Vec<H256> {
+        let epoch_numbers = epoch_numbers.iter().map(|e| EpochNumber::Number(e.clone().into())).collect();
+        self.consensus.get_block_hashes_by_epochs(epoch_numbers)
+    }
+
     pub fn verified_invalid(&self, hash: &H256) -> bool {
         self.consensus.verified_invalid(hash)
     }

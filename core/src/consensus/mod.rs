@@ -1333,6 +1333,33 @@ impl ConsensusGraphInner {
             })
     }
 
+    pub fn block_hashes_by_epochs(
+        &self, epoch_numbers: Vec<EpochNumber>,
+    ) -> Vec<H256> {
+        debug!(
+            "block_hashes_by_epoch epoch_number={:?} pivot_chain.len={:?}",
+            epoch_numbers,
+            self.pivot_chain.len()
+        );
+
+        epoch_numbers
+            .iter()
+            .map(|e| self.get_index_from_epoch_number(e.clone()))
+            .filter_map(Result::ok)
+            .map(|index|
+                self
+                    .indices_in_epochs
+                    .get(&index)
+                    .unwrap()
+                    .into_iter()
+                    .map(|index| self.arena[*index].hash)
+                    .collect::<Vec<H256>>())
+            .fold(vec![], |mut res, sub| {
+                res.extend(sub);
+                res
+            })
+    }
+
     pub fn epoch_hash(&self, epoch_number: usize) -> Option<H256> {
         self.pivot_chain
             .get(epoch_number)
@@ -1857,6 +1884,12 @@ impl ConsensusGraph {
         &self, epoch_number: EpochNumber,
     ) -> Result<Vec<H256>, String> {
         self.inner.read().block_hashes_by_epoch(epoch_number)
+    }
+
+    pub fn get_block_hashes_by_epochs(
+        &self, epoch_numbers: Vec<EpochNumber>,
+    ) -> Vec<H256> {
+        self.inner.read().block_hashes_by_epochs(epoch_numbers)
     }
 
     pub fn gas_price(&self) -> Option<U256> {

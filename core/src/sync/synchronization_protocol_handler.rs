@@ -79,8 +79,8 @@ const TOTAL_WEIGHT_IN_PAST_TIMER: TimerToken = 5;
 const MAX_TXS_BYTES_TO_PROPAGATE: usize = 1024 * 1024; // 1MB
 
 pub const EPOCH_RETRY_TIME_SECONDS: u64 = 1;
-const EPOCH_SYNC_MAX_INFLIGHT: u64 = 200;
-const EPOCH_SYNC_BATCH_SIZE: u64 = 30;
+const EPOCH_SYNC_MAX_INFLIGHT: u64 = 1000;
+const EPOCH_SYNC_BATCH_SIZE: u64 = 100;
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
 enum SyncHandlerWorkType {
@@ -1001,10 +1001,17 @@ impl SynchronizationProtocolHandler {
         let req = rlp.as_val::<GetBlockHashesByEpoch>()?;
         info!("on_get_block_hashes_by_epoch, msg=:{:?}", req);
 
-        let hashes = req.epochs.iter()
-            .map(|&e| self.graph.get_block_hashes_by_epoch(e))
-            .filter_map(Result::ok)
-            .fold(vec![], |mut res, sub| { res.extend(sub); res });
+        // let hashes = req
+        //     .epochs
+        //     .iter()
+        //     .map(|&e| self.graph.get_block_hashes_by_epoch(e))
+        //     .filter_map(Result::ok)
+        //     .fold(vec![], |mut res, sub| {
+        //         res.extend(sub);
+        //         res
+        //     });
+
+        let hashes = self.graph.get_block_hashes_by_epochs(&req.epochs);
 
         let msg: Box<dyn Message> = Box::new(GetBlockHashesResponse {
             request_id: req.request_id().into(),
@@ -1035,9 +1042,8 @@ impl SynchronizationProtocolHandler {
 
         info!("GOT HASHES: {:?}", resp.hashes);
 
-        let req =
-            self.request_manager
-                .match_request(io, peer, resp.request_id())?;
+        let id = resp.request_id();
+        let req = self.request_manager.match_request(io, peer, id)?;
 
         match req {
             RequestMessage::Epochs(epoch_req) => {
