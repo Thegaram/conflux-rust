@@ -79,8 +79,8 @@ const TOTAL_WEIGHT_IN_PAST_TIMER: TimerToken = 5;
 const MAX_TXS_BYTES_TO_PROPAGATE: usize = 1024 * 1024; // 1MB
 
 pub const EPOCH_RETRY_TIME_SECONDS: u64 = 1;
-const EPOCH_SYNC_MAX_INFLIGHT: u64 = 1000;
-const EPOCH_SYNC_BATCH_SIZE: u64 = 100;
+const EPOCH_SYNC_MAX_INFLIGHT: u64 = 300;
+const EPOCH_SYNC_BATCH_SIZE: u64 = 30;
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
 enum SyncHandlerWorkType {
@@ -823,20 +823,53 @@ impl SynchronizationProtocolHandler {
         let req = rlp.as_val::<GetBlockHeaders>()?;
         debug!("on_get_block_headers, msg=:{:?}", req);
 
-        let headers = req
-            .hashes
-            .iter()
-            .filter_map(|hash| self.graph.block_header_by_hash(&hash))
-            .collect();
-
+        let mut hash = req.hashes[0];
         let mut block_headers_resp = GetBlockHeadersResponse::default();
         block_headers_resp.set_request_id(req.request_id());
-        block_headers_resp.headers = headers;
+
+        for _n in 0..cmp::min(MAX_HEADERS_TO_SEND, 30) {
+            let header = self.graph.block_header_by_hash(&hash);
+            if header.is_none() {
+                break;
+            }
+            let header = header.unwrap();
+            block_headers_resp.headers.push(header.clone());
+            if hash == self.graph.genesis_hash() {
+                break;
+            }
+            hash = header.parent_hash().clone();
+        }
+        debug!(
+            "Returned {:?} block headers to peer {:?}",
+            block_headers_resp.headers.len(),
+            peer
+        );
 
         let msg: Box<dyn Message> = Box::new(block_headers_resp);
         send_message(io, peer, msg.as_ref(), SendQueuePriority::High)?;
         Ok(())
     }
+
+    // fn on_get_block_headers(
+    //     &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
+    // ) -> Result<(), Error> {
+    //     let req = rlp.as_val::<GetBlockHeaders>()?;
+    //     debug!("on_get_block_headers, msg=:{:?}", req);
+
+    //     let headers = req
+    //         .hashes
+    //         .iter()
+    //         .filter_map(|hash| self.graph.block_header_by_hash(&hash))
+    //         .collect();
+
+    //     let mut block_headers_resp = GetBlockHeadersResponse::default();
+    //     block_headers_resp.set_request_id(req.request_id());
+    //     block_headers_resp.headers = headers;
+
+    //     let msg: Box<dyn Message> = Box::new(block_headers_resp);
+    //     send_message(io, peer, msg.as_ref(), SendQueuePriority::High)?;
+    //     Ok(())
+    // }
 
     fn on_trans_prop_ctrl(&self, peer: PeerId, rlp: &Rlp) -> Result<(), Error> {
         let trans_prop_ctrl = rlp.as_val::<TransactionPropagationControl>()?;
@@ -1071,14 +1104,18 @@ impl SynchronizationProtocolHandler {
             .hashes
             .iter()
             .filter(|h| !self.graph.contains_block_header(&h))
-            .cloned()
-            .collect();
+            .cloned();
+            // .collect();
 
-        self.request_manager.request_block_headers(
-            io,
-            Some(peer),
-            missing_headers,
-        );
+        // self.request_manager.request_block_headers(
+        //     io,
+        //     Some(peer),
+        //     missing_headers,
+        // );
+        missing_headers.for_each(|h| {
+            self.request_manager
+                .request_block_headers(io, Some(peer), vec![h]);
+        });
 
         // TODO: handle empty response
 
@@ -1183,179 +1220,211 @@ impl SynchronizationProtocolHandler {
         // make sure only one thread can request new epochs at a time
         let mut latest_requested = self.latest_epoch_requested.lock();
         let best_peer_epoch = self.best_peer_epoch().unwrap_or(0);
-        let my_best_epoch = self.graph.best_epoch_number();
 
         while self.request_manager.num_epochs_in_flight()
             < EPOCH_SYNC_MAX_INFLIGHT
             && *latest_requested < best_peer_epoch
         {
-            let from = cmp::max(my_best_epoch, *latest_requested) + 1;
+            let next = {
+                let my_best_epoch = self.graph.best_epoch_number();
+                let last = (*latest_requested).max(my_best_epoch);
+
+                // request one-by-one near the end to avoid getting stuck
+                let stride = if last + EPOCH_SYNC_BATCH_SIZE > best_peer_epoch {
+                    1
+                } else {
+                    EPOCH_SYNC_BATCH_SIZE
+                };
+
+                (last + stride).min(best_peer_epoch)
+            };
 
             let peer = self.syn.get_random_peer_satisfying(|peer| {
                 match self.syn.get_peer_info(&peer) {
                     Err(_) => false,
-                    Ok(info) => info.read().best_epoch >= from,
+                    Ok(info) => info.read().best_epoch >= next,
                 }
             });
 
-            let until = {
-                let max_to_send = EPOCH_SYNC_MAX_INFLIGHT
-                    - self.request_manager.num_epochs_in_flight();
-
-                let best_of_this_peer = self
-                    .syn
-                    .get_peer_info(&peer.unwrap())
-                    .unwrap()
-                    .read()
-                    .best_epoch;
-
-                let until = from + cmp::min(EPOCH_SYNC_BATCH_SIZE, max_to_send);
-                cmp::min(until, best_of_this_peer + 1)
-            };
-
-            let epochs = (from..until).collect::<Vec<u64>>();
-
-            info!(
-                "requesting epochs {:?}/{:?} from peer {:?}",
-                epochs, best_peer_epoch, peer
+            debug!(
+                "requesting epoch {:?}/{:?} from peer {:?}",
+                next, best_peer_epoch, peer
             );
 
-            self.request_manager.request_epoch_hashes(io, peer, epochs);
-            *latest_requested = until - 1;
+            self.request_manager.request_epoch_hashes(io, peer, vec![next]);
+
+            *latest_requested = next;
         }
 
         debug_assert!(
             self.request_manager.num_epochs_in_flight()
                 <= EPOCH_SYNC_MAX_INFLIGHT
         );
-    }
+}
+
+    // fn request_epochs(&self, io: &NetworkContext) {
+    //     // make sure only one thread can request new epochs at a time
+    //     let mut latest_requested = self.latest_epoch_requested.lock();
+    //     let best_peer_epoch = self.best_peer_epoch().unwrap_or(0);
+    //     let my_best_epoch = self.graph.best_epoch_number();
+
+    //     while self.request_manager.num_epochs_in_flight()
+    //         < EPOCH_SYNC_MAX_INFLIGHT
+    //         && *latest_requested < best_peer_epoch
+    //     {
+    //         let from = cmp::max(my_best_epoch, *latest_requested) + 1;
+
+    //         let peer = self.syn.get_random_peer_satisfying(|peer| {
+    //             match self.syn.get_peer_info(&peer) {
+    //                 Err(_) => false,
+    //                 Ok(info) => info.read().best_epoch >= from,
+    //             }
+    //         });
+
+    //         let until = {
+    //             let max_to_send = EPOCH_SYNC_MAX_INFLIGHT
+    //                 - self.request_manager.num_epochs_in_flight();
+
+    //             let best_of_this_peer = self
+    //                 .syn
+    //                 .get_peer_info(&peer.unwrap())
+    //                 .unwrap()
+    //                 .read()
+    //                 .best_epoch;
+
+    //             let until = from + cmp::min(EPOCH_SYNC_BATCH_SIZE, max_to_send);
+    //             cmp::min(until, best_of_this_peer + 1)
+    //         };
+
+    //         let epochs = (from..until).collect::<Vec<u64>>();
+
+    //         info!(
+    //             "requesting epochs {:?}/{:?} from peer {:?}",
+    //             epochs, best_peer_epoch, peer
+    //         );
+
+    //         self.request_manager.request_epoch_hashes(io, peer, epochs);
+    //         *latest_requested = until - 1;
+    //     }
+
+    //     debug_assert!(
+    //         self.request_manager.num_epochs_in_flight()
+    //             <= EPOCH_SYNC_MAX_INFLIGHT
+    //     );
+    // }
 
     fn on_block_headers_response(
         &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
     ) -> Result<(), Error> {
-        // check request validity
         let mut block_headers = rlp.as_val::<GetBlockHeadersResponse>()?;
         debug!("on_block_headers_response, msg=:{:?}", block_headers);
-
-        let headers = block_headers
-            .headers
-            .iter()
-            .map(|h| h.hash())
-            .collect::<Vec<H256>>();
-        info!("GOT HEADERS: {:?}", headers);
-
-        for h in &block_headers.headers {
-            if self.graph.contains_block_header(&h.hash()) {
-                *self.duplicate_header_count.lock() += 1
+        let req = self.request_manager.match_request(
+            io,
+            peer,
+            block_headers.request_id(),
+        )?;
+        let (req_hash, _max_blocks) = match &req {
+            RequestMessage::Headers(header_req) => {
+                (header_req.hashes[0], 30)
             }
-        }
-
-        let id = block_headers.request_id();
-        let req = self.request_manager.match_request(io, peer, id)?;
-
-        let req_hashes = match &req {
-            RequestMessage::Headers(header_req) => &header_req.hashes,
             _ => {
-                warn!(
-                    "Get response not matching the request! req={:?}, resp={:?}",
-                    req, block_headers
-                );
+                warn!("Get response not matching the request! req={:?}, resp={:?}", req, block_headers);
                 self.request_manager.remove_mismatch_request(io, &req);
                 return Err(ErrorKind::UnexpectedResponse.into());
             }
         };
 
-        // process request
-        let valid_headers =
-            block_headers.headers.iter_mut().filter_map(|header| {
-                let (valid, to_relay) =
-                    self.graph.insert_block_header(header, true, false);
-                if valid {
-                    Some((header, to_relay))
-                } else {
-                    None
-                }
-            });
-
-        let mut headers_to_request = HashSet::new();
-        let mut blocks_to_request = HashSet::new();
-        let mut headers_to_relay = HashSet::new();
+        let mut parent_hash = H256::default();
+        let mut parent_height = 0;
+        let mut hashes = Vec::default();
+        let mut dependent_hashes = Vec::new();
+        let mut need_to_relay = Vec::new();
         let mut returned_headers = HashSet::new();
 
-        for (header, to_relay) in valid_headers {
+        for header in &mut block_headers.headers {
             let hash = header.hash();
-            returned_headers.insert(hash);
-
-            // check missing dependencies
-            let parent = header.parent_hash();
-            if !self.graph.contains_block_header(parent) {
-                headers_to_request.insert(*parent);
+            if parent_hash != H256::default() && parent_hash != hash {
+                return Err(ErrorKind::Invalid.into());
             }
+            returned_headers.insert(hash);
+            parent_hash = header.parent_hash().clone();
+            parent_height = header.height();
 
-            for referee in header.referee_hashes() {
-                if !self.graph.contains_block_header(referee) {
-                    headers_to_request.insert(*referee);
+            let res = self.graph.insert_block_header(header, true, false);
+
+            if res.0 {
+                // Valid block based on header
+                if !self.graph.contains_block(&hash) {
+                    hashes.push(hash);
+                }
+                need_to_relay.extend(res.1);
+                for referee in header.referee_hashes() {
+                    dependent_hashes.push(*referee);
                 }
             }
-
-            // check block body
-            if !self.graph.contains_block(&hash) {
-                blocks_to_request.insert(hash);
-            }
-
-            // check relay
-            headers_to_relay.extend(to_relay);
         }
-
-        assert!(!headers_to_request.contains(&H256::default()));
+        dependent_hashes.push(parent_hash);
 
         debug!(
             "get headers response of hashes:{:?}, requesting block:{:?}",
-            returned_headers, blocks_to_request
+            returned_headers, hashes
         );
 
+        let mut xxx = HashSet::new(); xxx.insert(req_hash);
         self.request_manager.headers_received(
             io,
-            req_hashes.into_iter().cloned().collect(),
+            xxx,
             returned_headers,
         );
 
-        // request missing headers
-        info!("Requesting {} missing headers", headers_to_request.len());
-        self.request_manager.request_block_headers(
-            io,
-            Some(peer),
-            headers_to_request.into_iter().collect(),
-        );
+        for past_hash in &dependent_hashes {
+            if *past_hash != H256::default()
+                && !self.graph.contains_block_header(past_hash)
+            {
+                let _num = if *past_hash == parent_hash {
+                    let current_height =
+                        self.graph.consensus.best_epoch_number() as u64;
+                    // Without fork, we only need to request missing blocks
+                    // since current_height
+                    if parent_height > current_height {
+                        cmp::min(
+                            30,
+                            parent_height - current_height,
+                        )
+                    } else {
+                        30
+                    }
+                } else {
+                    30
+                };
+                self.request_manager.request_block_headers(
+                    io,
+                    Some(peer),
+                    vec![past_hash.clone()],
+                );
+            }
+        }
 
         let catch_up_mode = self.catch_up_mode();
 
-        // request missing blocks
-        if !blocks_to_request.is_empty() {
+        if !hashes.is_empty() {
             // FIXME: This is a naive strategy. Need to
             // make it more sophisticated.
             if catch_up_mode {
-                self.request_blocks(
-                    io,
-                    Some(peer),
-                    blocks_to_request.into_iter().collect(),
-                );
+                self.request_blocks(io, Some(peer), hashes);
             } else {
                 self.request_manager.request_compact_blocks(
                     io,
                     Some(peer),
-                    blocks_to_request.into_iter().collect(),
+                    hashes,
                 );
             }
         }
 
-        // relay if necessary
-        if !headers_to_relay.is_empty() && !catch_up_mode {
-            let headers_to_relay =
-                headers_to_relay.iter().map(|h| h.clone()).collect();
+        if !need_to_relay.is_empty() && !catch_up_mode {
             let new_block_hash_msg: Box<dyn Message> =
                 Box::new(NewBlockHashes {
-                    block_hashes: headers_to_relay,
+                    block_hashes: need_to_relay,
                 });
             self.broadcast_message(
                 io,
@@ -1367,6 +1436,145 @@ impl SynchronizationProtocolHandler {
 
         Ok(())
     }
+
+    // fn on_block_headers_response(
+    //     &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
+    // ) -> Result<(), Error> {
+    //     // check request validity
+    //     let mut block_headers = rlp.as_val::<GetBlockHeadersResponse>()?;
+    //     debug!("on_block_headers_response, msg=:{:?}", block_headers);
+
+    //     let headers = block_headers
+    //         .headers
+    //         .iter()
+    //         .map(|h| h.hash())
+    //         .collect::<Vec<H256>>();
+    //     info!("GOT HEADERS: {:?}", headers);
+
+    //     for h in &block_headers.headers {
+    //         if self.graph.contains_block_header(&h.hash()) {
+    //             *self.duplicate_header_count.lock() += 1
+    //         }
+    //     }
+
+    //     let id = block_headers.request_id();
+    //     let req = self.request_manager.match_request(io, peer, id)?;
+
+    //     let req_hashes = match &req {
+    //         RequestMessage::Headers(header_req) => &header_req.hashes,
+    //         _ => {
+    //             warn!(
+    //                 "Get response not matching the request! req={:?}, resp={:?}",
+    //                 req, block_headers
+    //             );
+    //             self.request_manager.remove_mismatch_request(io, &req);
+    //             return Err(ErrorKind::UnexpectedResponse.into());
+    //         }
+    //     };
+
+    //     // process request
+    //     let valid_headers =
+    //         block_headers.headers.iter_mut().filter_map(|header| {
+    //             let (valid, to_relay) =
+    //                 self.graph.insert_block_header(header, true, false);
+    //             if valid {
+    //                 Some((header, to_relay))
+    //             } else {
+    //                 warn!("WARNING: invalid block header {:?}", header);
+    //                 None
+    //             }
+    //         });
+
+    //     let mut headers_to_request = HashSet::new();
+    //     let mut blocks_to_request = HashSet::new();
+    //     let mut headers_to_relay = HashSet::new();
+    //     let mut returned_headers = HashSet::new();
+
+    //     for (header, to_relay) in valid_headers {
+    //         let hash = header.hash();
+    //         returned_headers.insert(hash);
+
+    //         // check missing dependencies
+    //         let parent = header.parent_hash();
+    //         if !self.graph.contains_block_header(parent) {
+    //             headers_to_request.insert(*parent);
+    //         }
+
+    //         for referee in header.referee_hashes() {
+    //             if !self.graph.contains_block_header(referee) {
+    //                 headers_to_request.insert(*referee);
+    //             }
+    //         }
+
+    //         // check block body
+    //         if !self.graph.contains_block(&hash) {
+    //             blocks_to_request.insert(hash);
+    //         }
+
+    //         // check relay
+    //         headers_to_relay.extend(to_relay);
+    //     }
+
+    //     assert!(!headers_to_request.contains(&H256::default()));
+
+    //     debug!(
+    //         "get headers response of hashes:{:?}, requesting block:{:?}",
+    //         returned_headers, blocks_to_request
+    //     );
+
+    //     self.request_manager.headers_received(
+    //         io,
+    //         req_hashes.into_iter().cloned().collect(),
+    //         returned_headers,
+    //     );
+
+    //     // request missing headers
+    //     info!("Requesting {} missing headers", headers_to_request.len());
+    //     self.request_manager.request_block_headers(
+    //         io,
+    //         Some(peer),
+    //         headers_to_request.into_iter().collect(),
+    //     );
+
+    //     let catch_up_mode = self.catch_up_mode();
+
+    //     // request missing blocks
+    //     if !blocks_to_request.is_empty() {
+    //         // FIXME: This is a naive strategy. Need to
+    //         // make it more sophisticated.
+    //         if catch_up_mode {
+    //             self.request_blocks(
+    //                 io,
+    //                 Some(peer),
+    //                 blocks_to_request.into_iter().collect(),
+    //             );
+    //         } else {
+    //             self.request_manager.request_compact_blocks(
+    //                 io,
+    //                 Some(peer),
+    //                 blocks_to_request.into_iter().collect(),
+    //             );
+    //         }
+    //     }
+
+    //     // relay if necessary
+    //     if !headers_to_relay.is_empty() && !catch_up_mode {
+    //         let headers_to_relay =
+    //             headers_to_relay.iter().map(|h| h.clone()).collect();
+    //         let new_block_hash_msg: Box<dyn Message> =
+    //             Box::new(NewBlockHashes {
+    //                 block_hashes: headers_to_relay,
+    //             });
+    //         self.broadcast_message(
+    //             io,
+    //             PeerId::max_value(),
+    //             new_block_hash_msg.as_ref(),
+    //             SendQueuePriority::High,
+    //         )?;
+    //     }
+
+    //     Ok(())
+    // }
 
     fn on_blocks_response(
         &self, io: &NetworkContext, peer: PeerId, rlp: &Rlp,
