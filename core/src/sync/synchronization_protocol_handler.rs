@@ -592,22 +592,7 @@ impl SynchronizationProtocolHandler {
         );
 
         // Broadcast completed block_header_ready blocks
-        if !completed_blocks.is_empty() && !self.catch_up_mode() {
-            let new_block_hash_msg: Box<dyn Message> =
-                Box::new(NewBlockHashes {
-                    block_hashes: completed_blocks,
-                });
-            self.broadcast_message(
-                io,
-                PeerId::max_value(),
-                new_block_hash_msg.as_ref(),
-                SendQueuePriority::High,
-            )
-            .unwrap_or_else(|e| {
-                warn!("Error broadcasting blocks, err={:?}", e);
-            });
-        }
-
+        self.relay_blocks(io, completed_blocks)?;
         Ok(())
     }
 
@@ -832,23 +817,9 @@ impl SynchronizationProtocolHandler {
                                 request_again = true;
                                 request_from_same_peer = true;
                             }
-                            if to_relay && !self.catch_up_mode() {
-                                let new_block_hash_msg: Box<dyn Message> =
-                                    Box::new(NewBlockHashes {
-                                        block_hashes: blocks,
-                                    });
-                                self.broadcast_message(
-                                    io,
-                                    PeerId::max_value(),
-                                    new_block_hash_msg.as_ref(),
-                                    SendQueuePriority::High,
-                                )
-                                .unwrap_or_else(|e| {
-                                    warn!(
-                                        "Error broadcasting blocks, err={:?}",
-                                        e
-                                    );
-                                });
+
+                            if to_relay {
+                                self.relay_blocks(io, blocks)?;
                             }
                         }
                         None => {
@@ -1498,23 +1469,7 @@ impl SynchronizationProtocolHandler {
             );
         }
 
-        // relay if necessary
-        if !need_to_relay.is_empty() && !catch_up_mode {
-            let new_block_hash_msg: Box<dyn Message> =
-                Box::new(NewBlockHashes {
-                    block_hashes: need_to_relay.into_iter().collect(),
-                });
-            self.broadcast_message(
-                io,
-                PeerId::max_value(),
-                new_block_hash_msg.as_ref(),
-                SendQueuePriority::High,
-            )
-            .unwrap_or_else(|e| {
-                warn!("Error broadcasting blocks, err={:?}", e);
-            });
-        }
-
+        self.relay_blocks(io, need_to_relay.into_iter().collect())?;
         timestamp_validation_result
     }
 
@@ -1649,22 +1604,7 @@ impl SynchronizationProtocolHandler {
             chosen_peer,
         );
 
-        if !need_to_relay.is_empty() && !self.catch_up_mode() {
-            let new_block_hash_msg: Box<dyn Message> =
-                Box::new(NewBlockHashes {
-                    block_hashes: need_to_relay,
-                });
-            self.broadcast_message(
-                io,
-                PeerId::max_value(),
-                new_block_hash_msg.as_ref(),
-                SendQueuePriority::High,
-            )
-            .unwrap_or_else(|e| {
-                warn!("Error broadcasting blocks, err={:?}", e);
-            });
-        }
-
+        self.relay_blocks(io, need_to_relay)?;
         Ok(())
     }
 
@@ -1763,21 +1703,8 @@ impl SynchronizationProtocolHandler {
         let need_to_relay = self.on_new_decoded_block(block, true, true)?;
 
         // broadcast the hash of the newly got block
-        if !need_to_relay.is_empty() && !self.catch_up_mode() {
-            let new_block_hash_msg: Box<dyn Message> =
-                Box::new(NewBlockHashes {
-                    block_hashes: need_to_relay,
-                });
-            self.broadcast_message(
-                io,
-                PeerId::max_value(),
-                new_block_hash_msg.as_ref(),
-                SendQueuePriority::High,
-            )
-            .unwrap_or_else(|e| {
-                warn!("Error broadcasting blocks, err={:?}", e);
-            });
-        }
+
+        self.relay_blocks(io, need_to_relay)?;
         Ok(())
     }
 
@@ -1787,6 +1714,19 @@ impl SynchronizationProtocolHandler {
         let new_block_hashes = rlp.as_val::<NewBlockHashes>()?;
         debug!("on_new_block_hashes, msg={:?}", new_block_hashes);
 
+        // save new best epoch for peer
+        if let Ok(info) = self.syn.get_peer_info(&peer) {
+            let mut info = info.write();
+            if new_block_hashes.best_epoch < info.best_epoch {
+                warn!(
+                    "Peer best epoch decreased from {} to {}",
+                    info.best_epoch, new_block_hashes.best_epoch
+                );
+            }
+            info.best_epoch = new_block_hashes.best_epoch;
+        }
+
+        // if in catch-up mode, store new hashes for later
         if self.catch_up_mode() {
             if let Ok(info) = self.syn.get_peer_info(&peer) {
                 let mut info = info.write();
@@ -1889,16 +1829,18 @@ impl SynchronizationProtocolHandler {
             let new_block_hash_msg: Box<dyn Message> =
                 Box::new(NewBlockHashes {
                     block_hashes: need_to_relay,
+                    best_epoch: self.graph.best_epoch_number(),
                 });
-            self.broadcast_message(
+
+            if let Err(e) = self.broadcast_message(
                 io,
                 PeerId::max_value(),
                 new_block_hash_msg.as_ref(),
                 SendQueuePriority::High,
-            )
-            .unwrap_or_else(|e| {
+            ) {
                 warn!("Error broadcasting blocks, err={:?}", e);
-            });
+                return Err(ErrorKind::Invalid.into());
+            }
         }
 
         Ok(())
@@ -2080,22 +2022,8 @@ impl SynchronizationProtocolHandler {
             );
         }
 
-        // relay if necessary
-        if !need_to_relay.is_empty() && !catch_up_mode {
-            let new_block_hash_msg: Box<dyn Message> =
-                Box::new(NewBlockHashes {
-                    block_hashes: need_to_relay.into_iter().collect(),
-                });
-            self.broadcast_message(
-                io,
-                PeerId::max_value(),
-                new_block_hash_msg.as_ref(),
-                SendQueuePriority::High,
-            )
-            .unwrap_or_else(|e| {
-                warn!("Error broadcasting blocks, err={:?}", e);
-            });
-        }
+        // relay if necessary, ignore result
+        let _ = self.relay_blocks(io, need_to_relay.into_iter().collect());
     }
 
     pub fn propagate_new_transactions(&self, io: &NetworkContext) {

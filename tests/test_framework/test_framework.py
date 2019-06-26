@@ -179,7 +179,7 @@ class ConfluxTestFramework:
             self.options.tmpdir = os.getenv(
                 "CONFLUX_TESTS_LOG_DIR",
                 default=tempfile.mkdtemp(prefix="conflux_test_"))
-        
+
         self._start_logging()
         self.log.info("PortSeed.n=" + str(PortSeed.n))
 

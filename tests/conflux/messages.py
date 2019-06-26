@@ -96,24 +96,16 @@ class Status(rlp.Serializable):
 
 
 class NewBlockHashes(rlp.Serializable):
-    def __init__(self, block_hashes=[]):
-        assert is_sequence(block_hashes)
-        self.block_hashes = block_hashes
+    fields = [
+        ("block_hashes", CountableList(hash32)),
+        ("best_epoch", big_endian_int)
+    ]
 
-    @classmethod
-    def serializable(cls, obj):
-        if is_sequence(obj.block_hashes):
-            return True
-        else:
-            return False
-
-    @classmethod
-    def serialize(cls, obj):
-        return CountableList(hash32).serialize(obj.block_hashes)
-
-    @classmethod
-    def deserialize(cls, serial):
-        return cls(block_hashes=CountableList(hash32).deserialize(serial))
+    def __init__(self, block_hashes, best_epoch):
+        super().__init__(
+            block_hashes=block_hashes,
+            best_epoch=best_epoch,
+        )
 
 
 class Transactions:

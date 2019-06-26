@@ -52,7 +52,7 @@ class MessageTest(ConfluxTestFramework):
         handler.wait()
         self.log.info("Received GetBlock response")
 
-        self.send_msg(NewBlockHashes([new_block.block_header.hash]))
+        self.send_msg(NewBlockHashes([new_block.block_header.hash], 0))
         self.send_msg(NewBlock(block=new_block))
         self.log.info("Send GetTerminalBLockHashes message")
         self.send_msg(GetTerminalBlockHashes())
@@ -60,7 +60,7 @@ class MessageTest(ConfluxTestFramework):
         handler.wait()
         self.log.info("Received TerminalBlockHashes")
 
-        # FIXME: Currently, the transaction broadcast logic 
+        # FIXME: Currently, the transaction broadcast logic
         # has not been finished. Enable it later.
 
         #self.send_msg(Transactions(transactions=[new_transaction]))
