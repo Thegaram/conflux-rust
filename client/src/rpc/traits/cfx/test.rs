@@ -3,7 +3,7 @@
 // See http://www.gnu.org/licenses/
 
 use super::super::super::types::{
-    BlameInfo, Block, Bytes, Receipt as RpcReceipt, Status as RpcStatus,
+    Block, Receipt as RpcReceipt, Status as RpcStatus,
 };
 use cfx_types::H256;
 use cfxcore::PeerInfo;
@@ -25,17 +25,6 @@ pub trait TestRpc {
 
     #[rpc(name = "getgoodput")]
     fn get_goodput(&self) -> RpcResult<isize>;
-
-    #[rpc(name = "generate")]
-    fn generate(
-        &self, num_blocks: usize, num_txs: usize,
-    ) -> RpcResult<Vec<H256>>;
-
-    #[rpc(name = "generatefixedblock")]
-    fn generate_fixed_block(
-        &self, parent_hash: H256, referee: Vec<H256>, num_txs: usize,
-        adaptive: bool, difficulty: Option<u64>,
-    ) -> RpcResult<H256>;
 
     #[rpc(name = "addnode")]
     fn add_peer(&self, id: NodeId, addr: SocketAddr) -> RpcResult<()>;
@@ -61,33 +50,6 @@ pub trait TestRpc {
 
     #[rpc(name = "addlatency")]
     fn add_latency(&self, id: NodeId, latency_ms: f64) -> RpcResult<()>;
-
-    #[rpc(name = "generateoneblock")]
-    fn generate_one_block(
-        &self, num_txs: usize, block_size_limit: usize,
-    ) -> RpcResult<H256>;
-
-    #[rpc(name = "generateoneblockspecial")]
-    fn generate_one_block_special(
-        &self, num_txs: usize, block_size_limit: usize, num_txs_simple: usize,
-        num_txs_erc20: usize,
-    ) -> RpcResult<()>;
-
-    #[rpc(name = "test_generatecustomblock")]
-    fn generate_custom_block(
-        &self, parent: H256, referees: Vec<H256>, raw: Bytes,
-        adaptive: Option<bool>,
-    ) -> RpcResult<H256>;
-
-    #[rpc(name = "test_generateblockwithfaketxs")]
-    fn generate_block_with_fake_txs(
-        &self, raw: Bytes, tx_data_len: Option<usize>,
-    ) -> RpcResult<H256>;
-
-    #[rpc(name = "test_generateblockwithblameinfo")]
-    fn generate_block_with_blame_info(
-        &self, num_txs: usize, block_size_limit: usize, blame_info: BlameInfo,
-    ) -> RpcResult<H256>;
 
     #[rpc(name = "gettransactionreceipt")]
     fn get_transaction_receipt(

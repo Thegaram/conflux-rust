@@ -3,5 +3,6 @@
 // See http://www.gnu.org/licenses/
 
 pub mod debug;
+pub mod generate;
 pub mod public;
 pub mod test;
