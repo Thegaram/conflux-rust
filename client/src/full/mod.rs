@@ -17,7 +17,8 @@ use cfxcore::{
 };
 
 use crate::rpc::{
-    impls::cfx::RpcImpl, setup_debug_rpc_apis, setup_public_rpc_apis, RpcBlock,
+    impls::full::Rpc as FullNodeRpc, setup_debug_rpc_apis,
+    setup_public_rpc_apis, RpcBlock,
 };
 use cfx_types::{Address, U256};
 use cfxcore::block_data_manager::BlockDataManager;
@@ -306,13 +307,13 @@ impl FullClient {
             None
         };
 
-        let rpc_impl = Arc::new(RpcImpl::new(
+        let rpc = Arc::new(FullNodeRpc::new(
             consensus.clone(),
-            sync.clone(),
             blockgen.clone(),
-            txpool.clone(),
             exit,
             network.clone(),
+            sync.clone(),
+            txpool.clone(),
         ));
 
         let debug_rpc_http_server = super::rpc::new_http(
@@ -322,7 +323,7 @@ impl FullClient {
                 conf.raw_conf.jsonrpc_cors.clone(),
                 conf.raw_conf.jsonrpc_http_keep_alive,
             ),
-            setup_debug_rpc_apis(rpc_impl.clone()),
+            setup_debug_rpc_apis(rpc.clone()),
         )?;
 
         let rpc_tcp_server = super::rpc::new_tcp(
@@ -331,9 +332,9 @@ impl FullClient {
                 conf.raw_conf.jsonrpc_tcp_port,
             ),
             if conf.raw_conf.test_mode {
-                setup_debug_rpc_apis(rpc_impl.clone())
+                setup_debug_rpc_apis(rpc.clone())
             } else {
-                setup_public_rpc_apis(rpc_impl.clone())
+                setup_public_rpc_apis(rpc.clone())
             },
         )?;
 
@@ -345,9 +346,9 @@ impl FullClient {
                 conf.raw_conf.jsonrpc_http_keep_alive,
             ),
             if conf.raw_conf.test_mode {
-                setup_debug_rpc_apis(rpc_impl.clone())
+                setup_debug_rpc_apis(rpc.clone())
             } else {
-                setup_public_rpc_apis(rpc_impl.clone())
+                setup_public_rpc_apis(rpc.clone())
             },
         )?;
 

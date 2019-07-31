@@ -20,8 +20,8 @@ mod traits;
 mod types;
 
 use self::{
-    impls::cfx::{CfxHandler, DebugRpcImpl, RpcImpl, TestRpcImpl},
-    traits::cfx::{debug::DebugRpc, public::Cfx, test::TestRpc},
+    impls::{full::Rpc as FullRpc, light::Rpc as LightRpc},
+    traits::*,
 };
 
 pub use self::types::Block as RpcBlock;
@@ -83,23 +83,44 @@ impl HttpConfiguration {
     }
 }
 
-pub fn setup_public_rpc_apis(rpc_impl: Arc<RpcImpl>) -> IoHandler {
+pub fn setup_public_rpc_apis(rpc: Arc<FullRpc>) -> IoHandler {
     let mut handler = IoHandler::new();
 
-    // extend_with maps each method in RpcImpl object into a RPC handler
-    //    handler.extend_with(TestRpcImpl::new(rpc_impl.clone()).to_delegate());
-    handler.extend_with(CfxHandler::new(rpc_impl.clone()).to_delegate());
+    // extend_with maps each method in Rpc object into a RPC handler
+    handler.extend_with(rpc.cfx.clone().to_delegate());
 
     handler
 }
 
-pub fn setup_debug_rpc_apis(rpc_impl: Arc<RpcImpl>) -> IoHandler {
+pub fn setup_public_rpc_apis_light(rpc: Arc<LightRpc>) -> IoHandler {
     let mut handler = IoHandler::new();
 
-    // extend_with maps each method in RpcImpl object into a RPC handler
-    handler.extend_with(CfxHandler::new(rpc_impl.clone()).to_delegate());
-    handler.extend_with(TestRpcImpl::new(rpc_impl.clone()).to_delegate());
-    handler.extend_with(DebugRpcImpl::new(rpc_impl).to_delegate());
+    // extend_with maps each method in Rpc object into a RPC handler
+    handler.extend_with(rpc.cfx.clone().to_delegate());
+
+    handler
+}
+
+pub fn setup_debug_rpc_apis(rpc: Arc<FullRpc>) -> IoHandler {
+    let mut handler = IoHandler::new();
+
+    // extend_with maps each method in Rpc object into a RPC handler
+    handler.extend_with(rpc.cfx.clone().to_delegate());
+    handler.extend_with(rpc.debug.clone().to_delegate());
+    handler.extend_with(rpc.generate.clone().to_delegate());
+    handler.extend_with(rpc.test.clone().to_delegate());
+
+    handler
+}
+
+pub fn setup_debug_rpc_apis_light(rpc: Arc<LightRpc>) -> IoHandler {
+    let mut handler = IoHandler::new();
+
+    // extend_with maps each method in Rpc object into a RPC handler
+    handler.extend_with(rpc.cfx.clone().to_delegate());
+    handler.extend_with(rpc.debug.clone().to_delegate());
+    handler.extend_with(rpc.generate.clone().to_delegate());
+    handler.extend_with(rpc.test.clone().to_delegate());
 
     handler
 }
