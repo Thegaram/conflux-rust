@@ -78,13 +78,15 @@ impl Handler {
         self.validate_genesis_hash(status.genesis_hash)?;
         // TODO(thegaram): check protocol version
 
-        let peer_state = self.peers.insert(peer);
-        let mut state = peer_state.write();
+        let terminals = status.terminals.into_iter().collect();
 
-        state.protocol_version = status.protocol_version;
-        state.genesis_hash = status.genesis_hash;
-        state.best_epoch = status.best_epoch;
-        state.terminals = status.terminals.into_iter().collect();
+        let peer_state = self.peers.insert(peer);
+        let mut peer_state = peer_state.write();
+
+        peer_state.protocol_version = status.protocol_version;
+        peer_state.genesis_hash = status.genesis_hash;
+        peer_state.best_epoch = status.best_epoch;
+        peer_state.terminals = terminals;
 
         Ok(())
     }
