@@ -4,7 +4,10 @@
 
 use io::TimerToken;
 use rlp::Rlp;
-use std::sync::{atomic::AtomicU64, Arc};
+use std::{
+    sync::{atomic::AtomicU64, Arc},
+    time::Duration,
+};
 
 use crate::{
     consensus::ConsensusGraph,
@@ -16,11 +19,18 @@ use crate::{
     },
     message::{Message, MsgId},
     network::{NetworkContext, NetworkProtocolHandler, PeerId},
+    sync::SynchronizationGraph,
 };
 
 use cfx_types::H256;
 
 use super::{query::QueryHandler, sync::SyncHandler};
+
+const SYNC_TIMER: TimerToken = 0;
+const REQUEST_CLEANUP_TIMER: TimerToken = 1;
+
+const SYNC_PERIOD_MS: u64 = 5000;
+const CLEANUP_PERIOD_MS: u64 = 1000;
 
 /// Handler is responsible for maintaining peer meta-information and
 /// dispatching messages to the query and sync sub-handlers.
@@ -28,21 +38,35 @@ pub struct Handler {
     consensus: Arc<ConsensusGraph>,
     pub peers: Arc<Peers>,
     pub query: QueryHandler,
-    pub sync: SyncHandler,
+    sync: SyncHandler,
 }
 
 impl Handler {
-    pub fn new(consensus: Arc<ConsensusGraph>) -> Self {
+    pub fn new(
+        consensus: Arc<ConsensusGraph>, graph: Arc<SynchronizationGraph>,
+    ) -> Self {
+        let peers = Arc::new(Peers::new());
         let next_request_id = Arc::new(AtomicU64::new(0));
 
+        let query =
+            QueryHandler::new(consensus.clone(), next_request_id.clone());
+
+        let sync = SyncHandler::new(
+            consensus.clone(),
+            graph,
+            next_request_id,
+            peers.clone(),
+        );
+
         Handler {
-            consensus: consensus.clone(),
-            peers: Arc::new(Peers::new()),
-            query: QueryHandler::new(consensus, next_request_id.clone()),
-            sync: SyncHandler::new(next_request_id),
+            consensus,
+            peers,
+            query,
+            sync,
         }
     }
 
+    #[rustfmt::skip]
     fn dispatch_message(
         &self, io: &NetworkContext, peer: PeerId, msg_id: MsgId, rlp: Rlp,
     ) -> Result<(), Error> {
@@ -54,6 +78,9 @@ impl Handler {
             msgid::STATUS => self.on_status(io, peer, &rlp),
             msgid::STATE_ROOT => self.query.on_state_root(io, peer, &rlp),
             msgid::STATE_ENTRY => self.query.on_state_entry(io, peer, &rlp),
+            msgid::BLOCK_HASHES => self.sync.on_block_hashes(io, peer, &rlp),
+            msgid::BLOCK_HEADERS => self.sync.on_block_headers(io, peer, &rlp),
+            msgid::NEW_BLOCK_HASHES => self.sync.on_new_block_hashes(io, peer, &rlp),
             _ => Err(ErrorKind::UnknownMessage.into()),
         }
     }
@@ -119,7 +146,15 @@ impl Handler {
 }
 
 impl NetworkProtocolHandler for Handler {
-    fn initialize(&self, _io: &NetworkContext) {}
+    fn initialize(&self, io: &NetworkContext) {
+        let period = Duration::from_millis(SYNC_PERIOD_MS);
+        io.register_timer(SYNC_TIMER, period)
+            .expect("Error registering sync timer");
+
+        let period = Duration::from_millis(CLEANUP_PERIOD_MS);
+        io.register_timer(REQUEST_CLEANUP_TIMER, period)
+            .expect("Error registering request housekeeping timer");
+    }
 
     fn on_message(&self, io: &NetworkContext, peer: PeerId, raw: &[u8]) {
         if raw.len() < 2 {
@@ -164,7 +199,19 @@ impl NetworkProtocolHandler for Handler {
         self.peers.remove(&peer);
     }
 
-    fn on_timeout(&self, _io: &NetworkContext, _timer: TimerToken) {
-        // EMPTY
+    fn on_timeout(&self, io: &NetworkContext, timer: TimerToken) {
+        trace!("Timeout: timer={:?}", timer);
+        match timer {
+            SYNC_TIMER => {
+                if let Err(e) = self.sync.start_sync(io) {
+                    warn!("Failed to trigger sync: {:?}", e);
+                }
+            }
+            REQUEST_CLEANUP_TIMER => {
+                self.sync.clean_up_requests();
+            }
+            // TODO(thegaram): add other timers (e.g. data_man gc)
+            _ => warn!("Unknown timer {} triggered.", timer),
+        }
     }
 }
