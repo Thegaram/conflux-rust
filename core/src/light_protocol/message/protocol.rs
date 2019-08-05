@@ -70,3 +70,8 @@ pub struct BlockHeaders {
     pub request_id: RequestId,
     pub headers: Vec<PrimitiveBlockHeader>,
 }
+
+#[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable)]
+pub struct NewBlockHashes {
+    pub hashes: Vec<H256>,
+}
