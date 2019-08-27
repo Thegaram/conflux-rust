@@ -195,8 +195,8 @@ impl SyncHandler {
             return Ok(());
         }
 
-        let hashes = msg.hashes.into_iter();
-        self.headers.request(hashes, HashSource::NewHash);
+        self.headers
+            .request_now(io, peer, msg.hashes, HashSource::NewHash);
 
         self.start_sync(io);
         Ok(())

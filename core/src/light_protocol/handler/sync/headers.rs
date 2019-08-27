@@ -146,6 +146,27 @@ impl Headers {
         self.sync_manager.insert_waiting(headers);
     }
 
+    #[inline]
+    pub fn request_now(
+        &self, io: &dyn NetworkContext, peer: PeerId, hashes: Vec<H256>,
+        source: HashSource,
+    )
+    {
+        let headers = hashes
+            .clone()
+            .into_iter()
+            .filter(|h| !self.graph.contains_block_header(&h))
+            .map(|h| MissingHeader::new(h, source.clone()));
+
+        match self.send_request(io, peer, hashes) {
+            Ok(_) => self.sync_manager.insert_in_flight(headers),
+            Err(e) => {
+                warn!("Failed to send request: {}", e);
+                self.sync_manager.insert_waiting(headers);
+            }
+        }
+    }
+
     pub fn receive<I>(&self, headers: I)
     where I: Iterator<Item = BlockHeader> {
         let mut missing = HashSet::new();
