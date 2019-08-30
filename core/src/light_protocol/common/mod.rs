@@ -23,3 +23,74 @@ where I: Iterator<Item = T> {
         Some(max_so_far) => Some(cmp::max(max_so_far, x)),
     })
 }
+
+extern crate futures;
+use futures::{Async, Future, Stream};
+
+use crate::parameters::light::{MAX_POLL_TIME_MS, POLL_PERIOD_MS};
+
+pub fn poll_next<T: Stream>(stream: &mut T) -> Option<T::Item>
+where T::Item: std::fmt::Debug {
+    // poll result
+    // TODO(thegaram): come up with something better
+    // we can consider returning a future if it is
+    // compatible with our current event loop
+    let max_poll_num = MAX_POLL_TIME_MS / POLL_PERIOD_MS;
+
+    for ii in 0..max_poll_num {
+        info!("poll number {}", ii);
+        match stream.poll() {
+            Ok(Async::Ready(resp)) => {
+                info!("poll result: {:?}", resp);
+                return resp;
+            }
+            Ok(Async::NotReady) => {
+                info!("poll result: NotReady");
+                ()
+            }
+            Err(_) => {
+                info!("poll result: Error");
+                return None; // TODO
+            }
+        }
+
+        info!("sleeping...");
+        let d = std::time::Duration::from_millis(POLL_PERIOD_MS);
+        std::thread::sleep(d);
+    }
+
+    None // TODO
+}
+
+pub fn poll<T: Future>(future: &mut T) -> Option<T::Item>
+where T::Item: std::fmt::Debug {
+    // poll result
+    // TODO(thegaram): come up with something better
+    // we can consider returning a future if it is
+    // compatible with our current event loop
+    let max_poll_num = MAX_POLL_TIME_MS / POLL_PERIOD_MS;
+
+    for ii in 0..max_poll_num {
+        info!("poll number {}", ii);
+        match future.poll() {
+            Ok(Async::Ready(resp)) => {
+                info!("poll result: {:?}", resp);
+                return Some(resp);
+            }
+            Ok(Async::NotReady) => {
+                info!("poll result: NotReady");
+                ()
+            }
+            Err(_) => {
+                info!("poll result: Error");
+                return None; // TODO
+            }
+        }
+
+        info!("sleeping...");
+        let d = std::time::Duration::from_millis(POLL_PERIOD_MS);
+        std::thread::sleep(d);
+    }
+
+    None // TODO
+}

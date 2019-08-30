@@ -2,19 +2,28 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use cfx_types::{H160, H256};
-use primitives::{Account, SignedTransaction, StateRoot};
+use cfx_types::{Bloom, H160, H256};
+use primitives::{
+    filter::{Filter, FilterError},
+    log_entry::{LocalizedLogEntry, LogEntry},
+    Account, Receipt, SignedTransaction, StateRoot,
+};
 use std::sync::Arc;
+
+extern crate futures;
+use futures::{future, stream, Future, Stream};
 
 use crate::{
     consensus::ConsensusGraph,
     network::{NetworkService, PeerId},
+    parameters::consensus::DEFERRED_STATE_EPOCH_COUNT,
     statedb::StorageKey,
     storage,
     sync::SynchronizationGraph,
 };
 
 use super::{
+    common::{poll_next, LedgerInfo},
     handler::QueryResult,
     message::{GetStateEntry, GetStateRoot, GetTxs},
     Error, ErrorKind, Handler as LightHandler, LIGHT_PROTOCOL_ID,
@@ -22,7 +31,16 @@ use super::{
 };
 
 pub struct QueryService {
+    // shared consensus graph
+    consensus: Arc<ConsensusGraph>,
+
+    // ...
     handler: Arc<LightHandler>,
+
+    // helper API for retrieving ledger information
+    ledger: LedgerInfo,
+
+    // ...
     network: Arc<NetworkService>,
 }
 
@@ -32,8 +50,13 @@ impl QueryService {
         network: Arc<NetworkService>,
     ) -> Self
     {
+        let handler = Arc::new(LightHandler::new(consensus.clone(), graph));
+        let ledger = LedgerInfo::new(consensus.clone());
+
         QueryService {
-            handler: Arc::new(LightHandler::new(consensus, graph)),
+            consensus,
+            handler,
+            ledger,
             network,
         }
     }
@@ -211,5 +234,208 @@ impl QueryService {
         }
 
         None
+    }
+
+    fn handle_receipt_logs(
+        hash: H256, transaction_index: usize, mut logs: Vec<LogEntry>,
+        filter: Filter,
+    ) -> impl Iterator<Item = LocalizedLogEntry>
+    {
+        let num_logs = logs.len();
+
+        // process logs in reverse order
+        logs.reverse();
+
+        logs.into_iter()
+            .enumerate()
+            .filter(move |(_, entry)| filter.matches(&entry))
+            .map(move |(ii, entry)| LocalizedLogEntry {
+                block_hash: hash,
+                block_number: 0, // TODO
+                entry,
+                log_index: 0,           // TODO
+                transaction_hash: hash, // will fill later
+                transaction_index,
+                transaction_log_index: num_logs - ii - 1,
+            })
+    }
+
+    fn handle_block_receipts(
+        hash: H256, mut receipts: Vec<Receipt>, filter: Filter,
+    ) -> impl Iterator<Item = LocalizedLogEntry> {
+        let num_receipts = receipts.len();
+
+        // process block receipts in reverse order
+        receipts.reverse();
+
+        receipts.into_iter().map(|r| r.logs).enumerate().flat_map(
+            move |(ii, logs)| {
+                debug!("block_hash {:?} logs = {:?}", hash, logs);
+                Self::handle_receipt_logs(
+                    hash,
+                    num_receipts - ii - 1,
+                    logs,
+                    filter.clone(),
+                )
+            },
+        )
+    }
+
+    fn filter_logs(
+        &self, epoch: u64, mut receipts: Vec<Vec<Receipt>>, filter: Filter,
+    ) -> impl Iterator<Item = LocalizedLogEntry> {
+        // get epoch blocks in execution order
+        let mut hashes: Vec<H256> = self.ledger.block_hashes_in(epoch).unwrap(); // TODO
+
+        // process epoch receipts in reverse order
+        receipts.reverse();
+        hashes.reverse();
+
+        receipts
+            .into_iter()
+            .zip(hashes)
+            .flat_map(move |(receipts, hash)| {
+                debug!("block_hash {:?} receipts = {:?}", hash, receipts);
+                Self::handle_block_receipts(hash, receipts, filter.clone())
+            })
+    }
+
+    pub fn get_logs(
+        &self, filter: Filter,
+    ) -> Result<Vec<LocalizedLogEntry>, FilterError> {
+        // TODO: filter.block_hashes
+
+        let best = self.consensus.best_epoch_number();
+        let latest_verified = self.handler.sync.witnesses.latest_verified();
+        let latest_verifiable = latest_verified - DEFERRED_STATE_EPOCH_COUNT;
+        // TODO: underflow...
+        info!(
+            "best={}, latest_verified={}, latest_verifiable={}",
+            best, latest_verified, latest_verifiable
+        );
+
+        if latest_verified < DEFERRED_STATE_EPOCH_COUNT {
+            return Ok(vec![]);
+        }
+
+        // at most best_epoch
+        let from_epoch = match self
+            .consensus
+            .get_height_from_epoch_number(filter.from_epoch.clone())
+        {
+            Ok(num) => std::cmp::min(num, latest_verifiable),
+            Err(_) => return Ok(vec![]),
+        };
+
+        // at most best_epoch
+        let to_epoch = std::cmp::min(
+            latest_verifiable,
+            self.consensus
+                .get_height_from_epoch_number(filter.to_epoch.clone())
+                .unwrap_or(best),
+        );
+
+        if from_epoch > to_epoch {
+            return Err(FilterError::InvalidEpochNumber {
+                from_epoch,
+                to_epoch,
+            });
+        }
+
+        let blooms = filter.bloom_possibilities();
+        let bloom_match = |block_log_bloom: &Bloom| {
+            blooms
+                .iter()
+                .any(|bloom| block_log_bloom.contains_bloom(bloom))
+        };
+
+        let limit = filter.limit.map(|x| x as u64).unwrap_or(::std::u64::MAX);
+
+        let mut epochs: Vec<u64> = (from_epoch..(to_epoch + 1)).collect();
+        epochs.reverse();
+        debug!("executing filter on epochs {:?}", epochs);
+
+        let mut stream =
+            // stream epochs in chunks
+            stream::iter_ok::<_, Error>(epochs)
+
+            // retrieve blooms
+            .map(|epoch| {
+                debug!("Requesting blooms for {:?}", epoch);
+                self.handler.sync.blooms.request(epoch).map(move |bloom| (epoch, bloom))
+            })
+
+            // we first request up to 100 blooms and then wait for them and process them one by one
+            // NOTE: we wrap our future into a future because we don't want to wait for the value yet
+            .map(future::ok)
+            .buffered(100)
+            .and_then(|x| x)
+
+            // find the epochs that match
+            .filter_map(|(epoch, epoch_bloom)| {
+                    debug!("epoch {:?} bloom = {:?}", epoch, epoch_bloom);
+
+                    match bloom_match(&epoch_bloom) {
+                    // match true {
+                        true => Some(epoch),
+                        false => None,
+                    }
+                },
+            )
+
+            // retrieve receipts
+            .map(|epoch| {
+                debug!("Requesting receipts for {:?}", epoch);
+                self.handler.sync.receipts.request(epoch).map(move |receipts| (epoch, receipts))
+            })
+
+            // we first request up to 100 blooms and then wait for them and process them one by one
+            .map(future::ok)
+            .buffered(100)
+            .and_then(|x| x)
+
+            // filter logs in epoch
+            .map(|(epoch, receipts)| {
+                debug!("epoch {:?} receipts = {:?}", epoch, receipts);
+                self.filter_logs(epoch, receipts, filter.clone()).collect::<Vec<LocalizedLogEntry>>()
+            })
+
+            // Stream<Vec<Log>> -> Stream<Log>
+            .map(|logs| stream::iter_ok::<_, Error>(logs))
+            .flatten()
+
+            // retrieve block txs
+            .map(|log| {
+                debug!("Requesting block txs for {:?}", log.block_hash);
+                self.handler.sync.block_txs.request(log.block_hash).map(move |x| (log.clone(), x))
+            })
+
+            // we first request up to 100 blooms and then wait for them and process them one by one
+            .map(future::ok)
+            .buffered(100)
+            .and_then(|x| x)
+
+            .map(|(mut log, tx_hashes)| {
+                debug!("log = {:?}, tx_hashes = {:?}", log, tx_hashes);
+
+                // TODO: check over-indexing
+                log.transaction_hash = tx_hashes[log.transaction_index].hash();
+                log
+            })
+
+            .take(limit);
+
+        let mut matching = vec![];
+
+        while let Some(x) = poll_next(&mut stream) {
+            matching.push(x);
+        }
+
+        // TODO: wait without timeout at the end
+        // propagate timeout error
+
+        debug!("matching logs = {:?}", matching);
+        matching.reverse();
+        Ok(matching)
     }
 }

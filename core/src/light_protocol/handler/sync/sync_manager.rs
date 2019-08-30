@@ -72,8 +72,7 @@ where
     pub fn num_in_flight(&self) -> usize { self.in_flight.read().len() }
 
     #[inline]
-    pub fn insert_in_flight<I>(&self, missing: I)
-    where I: Iterator<Item = Item> {
+    pub fn insert_in_flight(&self, missing: impl Iterator<Item = Item>) {
         let new = missing.map(|item| (item.key(), InFlightRequest::new(item)));
         self.in_flight.write().extend(new);
     }
@@ -84,8 +83,7 @@ where
     }
 
     #[inline]
-    pub fn insert_waiting<I>(&self, items: I)
-    where I: Iterator<Item = Item> {
+    pub fn insert_waiting(&self, items: impl Iterator<Item = Item>) {
         let in_flight = self.in_flight.read();
         let mut waiting = self.waiting.write();
         let missing = items.filter(|item| !in_flight.contains_key(&item.key()));

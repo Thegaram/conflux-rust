@@ -123,7 +123,7 @@ pub mod light {
     pub const CLEANUP_PERIOD_MS: u64 = 1000;
 
     /// Frequency of re-triggering sync.
-    pub const SYNC_PERIOD_MS: u64 = 5000;
+    pub const SYNC_PERIOD_MS: u64 = 1000;
 
     /// Request timeouts.
     pub const EPOCH_REQUEST_TIMEOUT_MS: u64 = 2000;
@@ -133,7 +133,7 @@ pub mod light {
 
     /// Maximum time period we wait for a response for an on-demand query.
     /// After this timeout has been reached, we try another peer or give up.
-    pub const MAX_POLL_TIME_MS: u64 = 1000;
+    pub const MAX_POLL_TIME_MS: u64 = 10000;
 
     /// Period of time to sleep between subsequent polls for on-demand queries.
     pub const POLL_PERIOD_MS: u64 = 100;
@@ -143,12 +143,16 @@ pub mod light {
     pub const HEADER_REQUEST_BATCH_SIZE: usize = 30;
     pub const BLOOM_REQUEST_BATCH_SIZE: usize = 30;
     pub const WITNESS_REQUEST_BATCH_SIZE: usize = 10;
+    pub const RECEIPT_REQUEST_BATCH_SIZE: usize = 30;
+    pub const BLOCK_TX_REQUEST_BATCH_SIZE: usize = 30;
 
     /// Maximum number of in-flight items at any given time.
     /// If we reach this limit, we will not request any more.
     pub const MAX_HEADERS_IN_FLIGHT: usize = 500;
     pub const MAX_WITNESSES_IN_FLIGHT: usize = 30;
     pub const MAX_BLOOMS_IN_FLIGHT: usize = 500;
+    pub const MAX_RECEIPTS_IN_FLIGHT: usize = 100;
+    pub const MAX_BLOCK_TXS_IN_FLIGHT: usize = 100;
 
     /// Maximum number of in-flight epoch requests at any given time.
     /// Similar to `MAX_HEADERS_IN_FLIGHT`. However, it is hard to match

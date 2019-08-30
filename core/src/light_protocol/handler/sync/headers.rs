@@ -137,8 +137,9 @@ impl Headers {
     }
 
     #[inline]
-    pub fn request<I>(&self, hashes: I, source: HashSource)
-    where I: Iterator<Item = H256> {
+    pub fn request(
+        &self, hashes: impl Iterator<Item = H256>, source: HashSource,
+    ) {
         let headers = hashes
             .filter(|h| !self.graph.contains_block_header(&h))
             .map(|h| MissingHeader::new(h, source.clone()));

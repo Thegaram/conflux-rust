@@ -12,9 +12,7 @@ use primitives::{
 use crate::{
     consensus::ConsensusGraph,
     light_protocol::{
-        message::{
-            ReceiptsWithProof, StateRootWithProof, WitnessInfoWithHeight,
-        },
+        message::{StateRootWithProof, WitnessInfoWithHeight},
         Error, ErrorKind,
     },
     parameters::consensus::DEFERRED_STATE_EPOCH_COUNT,
@@ -48,14 +46,20 @@ impl LedgerInfo {
         Ok(self.consensus.get_hash_from_epoch_number(epoch)?)
     }
 
+    /// Get header at `hash`, if it exists.
+    #[inline]
+    pub fn header(&self, hash: H256) -> Result<BlockHeader, Error> {
+        let header = self.consensus.data_man.block_header_by_hash(&hash);
+        header
+            .map(|h| (*h).clone())
+            .ok_or(ErrorKind::InternalError.into())
+    }
+
     /// Get header at `height` on the pivot chain, if it exists.
     #[inline]
     pub fn pivot_header_of(&self, height: u64) -> Result<BlockHeader, Error> {
         let pivot = self.pivot_hash_of(height)?;
-        let header = self.consensus.data_man.block_header_by_hash(&pivot);
-        header
-            .map(|h| (*h).clone())
-            .ok_or(ErrorKind::InternalError.into())
+        self.header(pivot)
     }
 
     /// Get all block hashes corresponding to the pivot block at `height`.
@@ -170,9 +174,7 @@ impl LedgerInfo {
     /// Get the epoch receipts corresponding to the execution of `epoch`.
     /// Returns a vector of receipts for each block in `epoch`.
     #[inline]
-    pub fn epoch_receipts_of(
-        &self, epoch: u64,
-    ) -> Result<Vec<Vec<Receipt>>, Error> {
+    pub fn receipts_of(&self, epoch: u64) -> Result<Vec<Vec<Receipt>>, Error> {
         let pivot = self.pivot_hash_of(epoch)?;
         let hashes = self.block_hashes_in(epoch)?;
 
@@ -186,23 +188,6 @@ impl LedgerInfo {
                     .ok_or(ErrorKind::InternalError.into())
             })
             .collect()
-    }
-
-    /// Get the epoch receipts corresponding to the execution of `epoch`.
-    /// Returns a ledger proof along with the receipts.
-    #[inline]
-    pub fn receipts_with_proof_of(
-        &self, epoch: u64,
-    ) -> Result<ReceiptsWithProof, Error> {
-        let receipts = self.epoch_receipts_of(epoch)?;
-
-        let proof = self
-            .headers_needed_to_verify(epoch)?
-            .into_iter()
-            .map(|h| self.correct_deferred_receipts_root_hash_of(h))
-            .collect::<Result<Vec<H256>, Error>>()?;
-
-        Ok(ReceiptsWithProof { receipts, proof })
     }
 
     /// Get the aggregated bloom corresponding to the execution of `epoch`.

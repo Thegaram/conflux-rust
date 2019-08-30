@@ -63,6 +63,11 @@ error_chain! {
             display("Invalid state root"),
         }
 
+        InvalidTxRoot {
+            description("Invalid tx root"),
+            display("Invalid tx root"),
+        }
+
         InvalidTxSignature {
             description("Invalid tx signature"),
             display("Invalid tx signature"),
@@ -171,6 +176,7 @@ pub fn handle(io: &dyn NetworkContext, peer: PeerId, msg_id: MsgId, e: Error) {
         | ErrorKind::InvalidReceipts
         | ErrorKind::InvalidStateProof
         | ErrorKind::InvalidStateRoot
+        | ErrorKind::InvalidTxRoot
         | ErrorKind::InvalidTxSignature
         | ErrorKind::ValidationFailed
         | ErrorKind::Decoder(_) => op = Some(UpdateNodeOperation::Remove),

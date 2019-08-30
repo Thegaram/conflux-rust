@@ -5,15 +5,12 @@
 use std::sync::Arc;
 
 use cfx_types::{Bloom, H256};
-use primitives::{BlockHeaderBuilder, SignedTransaction};
+use primitives::{Block, BlockHeaderBuilder, Receipt, SignedTransaction};
 
 use crate::{
     consensus::ConsensusGraph,
     hash::keccak,
-    light_protocol::{
-        message::{ReceiptsWithProof, StateRootWithProof},
-        Error, ErrorKind,
-    },
+    light_protocol::{message::StateRootWithProof, Error, ErrorKind},
     parameters::consensus::DEFERRED_STATE_EPOCH_COUNT,
 };
 
@@ -60,6 +57,49 @@ impl Validate {
         if received != local {
             warn!(
                 "Bloom validation failed, received={:?}, local={:?}",
+                received, local
+            );
+            return Err(ErrorKind::InvalidBloom.into());
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn receipts_with_local_info(
+        &self, epoch: u64, receipts: &Vec<Vec<Receipt>>,
+    ) -> Result<(), Error> {
+        let pivot = self.ledger.pivot_hash_of(epoch)?;
+
+        let local = self
+            .consensus
+            .data_man
+            .get_epoch_execution_commitments(&pivot);
+
+        let local = match local {
+            Some(res) => res.receipts_root,
+            None => {
+                warn!(
+                    "Receipts root not found, epoch={}, receipts={:?}",
+                    epoch, receipts
+                );
+                return Err(ErrorKind::InternalError.into());
+            }
+        };
+
+        // Vec<Arc<Vec<Receipt>>>
+        let receipts = receipts
+            .clone()
+            .into_iter()
+            .map(|rs| Arc::new(rs))
+            .collect();
+
+        let received =
+            BlockHeaderBuilder::compute_block_receipts_root(&receipts);
+
+        if received != local {
+            warn!(
+                "Receipt validation failed, received={:?}, local={:?}",
                 received, local
             );
             return Err(ErrorKind::InvalidBloom.into());
@@ -136,29 +176,29 @@ impl Validate {
         }
     }
 
-    #[inline]
-    pub fn receipts(
-        &self, epoch: u64, rwp: &ReceiptsWithProof,
-    ) -> Result<(), Error> {
-        let ReceiptsWithProof { receipts, proof } = rwp;
-        let proof = LedgerProof::ReceiptsRoot(proof.to_vec());
+    // #[inline]
+    // pub fn receipts(
+    //     &self, epoch: u64, rwp: &ReceiptsWithProof,
+    // ) -> Result<(), Error> {
+    //     let ReceiptsWithProof { receipts, proof } = rwp;
+    //     let proof = LedgerProof::ReceiptsRoot(proof.to_vec());
 
-        // convert Vec<Vec<_>> to Vec<Arc<Vec<_>>>
-        let rs = receipts.into_iter().cloned().map(Arc::new).collect();
+    //     // convert Vec<Vec<_>> to Vec<Arc<Vec<_>>>
+    //     let rs = receipts.into_iter().cloned().map(Arc::new).collect();
 
-        let received = self.ledger_proof(epoch, proof)?;
-        let computed = BlockHeaderBuilder::compute_block_receipts_root(&rs);
+    //     let received = self.ledger_proof(epoch, proof)?;
+    //     let computed = BlockHeaderBuilder::compute_block_receipts_root(&rs);
 
-        if received != computed {
-            info!(
-                "Receipts root hash mismatch: received={}, computed={}",
-                received, computed
-            );
-            return Err(ErrorKind::InvalidReceipts.into());
-        }
+    //     if received != computed {
+    //         info!(
+    //             "Receipts root hash mismatch: received={}, computed={}",
+    //             received, computed
+    //         );
+    //         return Err(ErrorKind::InvalidReceipts.into());
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     #[inline]
     pub fn state_root(
@@ -191,6 +231,28 @@ impl Validate {
                     return Err(ErrorKind::InvalidTxSignature.into());
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn block_txs(
+        &self, hash: H256, txs: &Vec<SignedTransaction>,
+    ) -> Result<(), Error> {
+        self.txs(txs)?;
+
+        let local = *self.ledger.header(hash)?.transactions_root();
+
+        let txs: Vec<_> = txs.iter().map(|tx| Arc::new(tx.clone())).collect();
+        let received = Block::compute_transaction_root(&txs);
+
+        if received != local {
+            warn!(
+                "Tx root validation failed, received={:?}, local={:?}",
+                received, local
+            );
+            return Err(ErrorKind::InvalidTxRoot.into());
         }
 
         Ok(())
