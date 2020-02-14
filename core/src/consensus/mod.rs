@@ -27,6 +27,7 @@ use crate::{
     storage::state_manager::StateManagerTrait,
     transaction_pool::SharedTransactionPool,
     vm_factory::VmFactory,
+    Notifications,
 };
 use cfx_types::{Bloom, H160, H256, U256};
 use metrics::{register_meter_with_group, Meter, MeterTimer};
@@ -143,6 +144,7 @@ impl ConsensusGraph {
         conf: ConsensusConfig, vm: VmFactory, txpool: SharedTransactionPool,
         statistics: SharedStatistics, data_man: Arc<BlockDataManager>,
         pow_config: ProofOfWorkConfig, era_genesis_block_hash: &H256,
+        notifications: Arc<Notifications>,
     ) -> Self
     {
         let inner =
@@ -158,6 +160,7 @@ impl ConsensusGraph {
             vm,
             inner.clone(),
             conf.bench_mode,
+            notifications.clone(),
         );
         let confirmation_meter = ConfirmationMeter::new();
 
@@ -168,7 +171,12 @@ impl ConsensusGraph {
             executor: executor.clone(),
             statistics: statistics.clone(),
             new_block_handler: ConsensusNewBlockHandler::new(
-                conf, txpool, data_man, executor, statistics,
+                conf,
+                txpool,
+                data_man,
+                executor,
+                statistics,
+                notifications,
             ),
             confirmation_meter,
             best_info: RwLock::new(Arc::new(Default::default())),
@@ -191,7 +199,7 @@ impl ConsensusGraph {
     pub fn new(
         conf: ConsensusConfig, vm: VmFactory, txpool: SharedTransactionPool,
         statistics: SharedStatistics, data_man: Arc<BlockDataManager>,
-        pow_config: ProofOfWorkConfig,
+        pow_config: ProofOfWorkConfig, notifications: Arc<Notifications>,
     ) -> Self
     {
         let genesis_hash = data_man.get_cur_consensus_era_genesis_hash();
@@ -203,6 +211,7 @@ impl ConsensusGraph {
             data_man,
             pow_config,
             &genesis_hash,
+            notifications,
         )
     }
 

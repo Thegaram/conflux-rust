@@ -28,10 +28,12 @@ use serde_json::{from_value, Value};
 #[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Result {
-    /// New block header.
+    /// Block header
     Header(Header),
+
     /// Log
     Log(Log),
+
     /// Transaction hash
     TransactionHash(H256),
 }
@@ -56,10 +58,16 @@ impl Serialize for Result {
 pub enum Kind {
     /// New block headers subscription.
     NewHeads,
+
+    /// ...
+    PivotUpdates,
+
     /// Logs subscription.
     Logs,
+
     /// New Pending Transactions subscription.
     NewPendingTransactions,
+
     /// Node syncing status subscription.
     Syncing,
 }
@@ -69,6 +77,7 @@ pub enum Kind {
 pub enum Params {
     /// No parameters passed.
     None,
+
     /// Log parameters.
     Logs(Filter),
 }

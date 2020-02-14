@@ -16,7 +16,7 @@ use crate::{
     storage::{StateIndex, StateRootWithAuxInfo, StorageManagerTrait},
     vm::{Env, Spec},
     vm_factory::VmFactory,
-    SharedTransactionPool,
+    Notifications, SharedTransactionPool,
 };
 use cfx_types::{Address, BigEndianHash, H256, KECCAK_EMPTY_BLOOM, U256, U512};
 use core::convert::TryFrom;
@@ -25,6 +25,7 @@ use metrics::{register_meter_with_group, Meter, MeterTimer};
 use parity_bytes::ToPretty;
 use parking_lot::{Mutex, RwLock};
 use primitives::{
+    log_entry::LocalizedLogEntry,
     receipt::{
         Receipt, TRANSACTION_OUTCOME_EXCEPTION_WITHOUT_NONCE_BUMPING,
         TRANSACTION_OUTCOME_EXCEPTION_WITH_NONCE_BUMPING,
@@ -161,13 +162,14 @@ impl ConsensusExecutor {
     pub fn start(
         tx_pool: SharedTransactionPool, data_man: Arc<BlockDataManager>,
         vm: VmFactory, consensus_inner: Arc<RwLock<ConsensusGraphInner>>,
-        bench_mode: bool,
+        bench_mode: bool, notifications: Arc<Notifications>,
     ) -> Arc<Self>
     {
         let handler = Arc::new(ConsensusExecutionHandler::new(
             tx_pool,
             data_man.clone(),
             vm,
+            notifications,
         ));
         let (sender, receiver) = channel();
 
@@ -777,18 +779,20 @@ pub struct ConsensusExecutionHandler {
     tx_pool: SharedTransactionPool,
     data_man: Arc<BlockDataManager>,
     pub vm: VmFactory,
+    notifications: Arc<Notifications>,
 }
 
 impl ConsensusExecutionHandler {
     pub fn new(
         tx_pool: SharedTransactionPool, data_man: Arc<BlockDataManager>,
-        vm: VmFactory,
+        vm: VmFactory, notifications: Arc<Notifications>,
     ) -> Self
     {
         ConsensusExecutionHandler {
             tx_pool,
             data_man,
             vm,
+            notifications,
         }
     }
 
@@ -1036,6 +1040,7 @@ impl ConsensusExecutionHandler {
         let mut epoch_receipts = Vec::with_capacity(epoch_blocks.len());
         let mut to_pending = Vec::new();
         let mut block_number = start_block_number;
+        let mut log_base_index = 0;
         for block in epoch_blocks.iter() {
             let mut receipts = Vec::new();
             debug!(
@@ -1084,6 +1089,28 @@ impl ConsensusExecutionHandler {
                     Ok(ref executed) => {
                         env.gas_used = executed.cumulative_gas_used;
                         transaction_logs = executed.logs.clone();
+
+                        // send logs to pubsub
+                        self.notifications.logs_executed.send(
+                            transaction_logs
+                                .iter()
+                                .enumerate()
+                                .map(|(id, log)| LocalizedLogEntry {
+                                    entry: log.clone(),
+                                    block_hash: block.hash(),
+                                    epoch_number: pivot_block
+                                        .block_header
+                                        .height(),
+                                    transaction_hash: transaction.hash(),
+                                    transaction_index: idx,
+                                    log_index: id,
+                                    transaction_log_index: log_base_index + id,
+                                })
+                                .collect(),
+                        );
+
+                        log_base_index += transaction_logs.len();
+
                         if executed.exception.is_some() {
                             warn!(
                                 "tx execution error: transaction={:?}, err={:?}",

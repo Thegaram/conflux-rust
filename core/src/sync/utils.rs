@@ -13,7 +13,7 @@ use crate::{
     transaction_pool::{TxPoolConfig, DEFAULT_MAX_BLOCK_GAS_LIMIT},
     verification::VerificationConfig,
     vm_factory::VmFactory,
-    ConsensusGraph, TransactionPool,
+    ConsensusGraph, Notifications, TransactionPool,
 };
 use cfx_types::{Address, H256, U256};
 use core::str::FromStr;
@@ -170,6 +170,7 @@ pub fn initialize_synchronization_graph(
         statistics.clone(),
         data_man.clone(),
         pow_config.clone(),
+        Notifications::init(),
     ));
 
     let verification_config = VerificationConfig::new(true);
@@ -179,6 +180,7 @@ pub fn initialize_synchronization_graph(
         pow_config,
         sync_config,
         false,
+        Notifications::init(),
     ));
 
     (sync, consensus, genesis_block)

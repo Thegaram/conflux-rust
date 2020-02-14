@@ -17,7 +17,7 @@ use crate::{
     rlp::Encodable,
     statistics::SharedStatistics,
     storage::StateRootWithAuxInfo,
-    SharedTransactionPool,
+    Notifications, SharedTransactionPool,
 };
 use cfx_types::H256;
 use hibitset::{BitSet, BitSetLike, DrainableBitSet};
@@ -36,6 +36,7 @@ pub struct ConsensusNewBlockHandler {
     data_man: Arc<BlockDataManager>,
     executor: Arc<ConsensusExecutor>,
     statistics: SharedStatistics,
+    notifications: Arc<Notifications>,
 }
 
 /// ConsensusNewBlockHandler contains all sub-routines for handling new arriving
@@ -45,7 +46,7 @@ impl ConsensusNewBlockHandler {
     pub fn new(
         conf: ConsensusConfig, txpool: SharedTransactionPool,
         data_man: Arc<BlockDataManager>, executor: Arc<ConsensusExecutor>,
-        statistics: SharedStatistics,
+        statistics: SharedStatistics, notifications: Arc<Notifications>,
     ) -> Self
     {
         Self {
@@ -54,6 +55,7 @@ impl ConsensusNewBlockHandler {
             data_man,
             executor,
             statistics,
+            notifications,
         }
     }
 
@@ -1192,6 +1194,8 @@ impl ConsensusNewBlockHandler {
                 &inner.arena[inner.get_pivot_block_arena_index(fork_at - 1)]
                     .hash
             );
+
+            self.notifications.pivot_updates.send(block_header.hash());
         }
 
         // Now compute last_pivot_in_block and update pivot_metadata.
