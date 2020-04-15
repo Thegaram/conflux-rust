@@ -16,7 +16,7 @@ use crate::rpc::{
         Transaction as RpcTransaction, H160 as RpcH160, H256 as RpcH256,
         H520 as RpcH520, U128 as RpcU128, U256 as RpcU256, U64 as RpcU64,
     },
-    RpcResult,
+    RpcImplConfiguration, RpcResult,
 };
 use blockgen::BlockGenerator;
 use cfx_types::{AddressUtil, H160, H256, U256};
@@ -43,11 +43,6 @@ use primitives::{
 use rlp::Rlp;
 use std::{collections::BTreeMap, net::SocketAddr, sync::Arc};
 use txgen::{DirectTransactionGenerator, TransactionGenerator};
-
-#[derive(Default)]
-pub struct RpcImplConfiguration {
-    pub get_logs_filter_max_limit: Option<usize>,
-}
 
 pub struct RpcImpl {
     config: RpcImplConfiguration,

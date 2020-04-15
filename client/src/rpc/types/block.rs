@@ -9,7 +9,6 @@ use cfxcore::{
     consensus::ConsensusGraphInner,
     SharedConsensusGraph,
 };
-use jsonrpc_core::Error as RpcError;
 use primitives::{
     receipt::{
         TRANSACTION_OUTCOME_EXCEPTION_WITHOUT_NONCE_BUMPING,
@@ -17,7 +16,7 @@ use primitives::{
         TRANSACTION_OUTCOME_SUCCESS,
     },
     Block as PrimitiveBlock, BlockHeader as PrimitiveBlockHeader,
-    BlockHeaderBuilder, TransactionIndex,
+    TransactionIndex,
 };
 use serde::{
     de::{Deserialize, Deserializer, Error, Unexpected},
@@ -235,50 +234,51 @@ impl Block {
         }
     }
 
-    pub fn into_primitive(self) -> Result<PrimitiveBlock, RpcError> {
-        match self.transactions {
-            BlockTransactions::Hashes(_) => Err(RpcError::invalid_params(
-                "Invalid params: expected a array of transaction objects.",
-            )),
-            BlockTransactions::Full(vec) => Ok(PrimitiveBlock::new(
-                BlockHeaderBuilder::new()
-                    .with_parent_hash(self.parent_hash.into())
-                    .with_height(self.height.as_usize() as u64)
-                    .with_timestamp(self.timestamp.as_usize() as u64)
-                    .with_author(self.miner.into())
-                    .with_transactions_root(self.transactions_root.into())
-                    .with_deferred_state_root(self.deferred_state_root.into())
-                    .with_deferred_receipts_root(
-                        self.deferred_receipts_root.into(),
-                    )
-                    .with_deferred_logs_bloom_hash(
-                        self.deferred_logs_bloom_hash.into(),
-                    )
-                    .with_blame(self.blame)
-                    .with_difficulty(self.difficulty.into())
-                    .with_adaptive(self.adaptive)
-                    .with_gas_limit(self.gas_limit.into())
-                    .with_referee_hashes(
-                        self.referee_hashes
-                            .iter()
-                            .map(|x| x.clone().into())
-                            .collect(),
-                    )
-                    .with_nonce(self.nonce.as_usize() as u64)
-                    .build(),
-                {
-                    let mut transactions = Vec::new();
-                    for tx in vec.into_iter() {
-                        let signed_tx = tx.into_signed().map_err(|e| {
-                            RpcError::invalid_params(format!("Invalid params: failed to convert from a rpc transaction to signed transaction {:?}", e))
-                        })?;
-                        transactions.push(Arc::new(signed_tx));
-                    }
-                    transactions
-                },
-            )),
-        }
-    }
+    // pub fn into_primitive(self) -> Result<PrimitiveBlock, RpcError> {
+    //     match self.transactions {
+    //         BlockTransactions::Hashes(_) => Err(RpcError::invalid_params(
+    //             "Invalid params: expected a array of transaction objects.",
+    //         )),
+    //         BlockTransactions::Full(vec) => Ok(PrimitiveBlock::new(
+    //             BlockHeaderBuilder::new()
+    //                 .with_parent_hash(self.parent_hash.into())
+    //                 .with_height(self.height.as_usize() as u64)
+    //                 .with_timestamp(self.timestamp.as_usize() as u64)
+    //                 .with_author(self.miner.into())
+    //                 .with_transactions_root(self.transactions_root.into())
+    //                 
+    // .with_deferred_state_root(self.deferred_state_root.into())
+    //                 .with_deferred_receipts_root(
+    //                     self.deferred_receipts_root.into(),
+    //                 )
+    //                 .with_deferred_logs_bloom_hash(
+    //                     self.deferred_logs_bloom_hash.into(),
+    //                 )
+    //                 .with_blame(self.blame)
+    //                 .with_difficulty(self.difficulty.into())
+    //                 .with_adaptive(self.adaptive)
+    //                 .with_gas_limit(self.gas_limit.into())
+    //                 .with_referee_hashes(
+    //                     self.referee_hashes
+    //                         .iter()
+    //                         .map(|x| x.clone().into())
+    //                         .collect(),
+    //                 )
+    //                 .with_nonce(self.nonce.as_usize() as u64)
+    //                 .build(),
+    //             {
+    //                 let mut transactions = Vec::new();
+    //                 for tx in vec.into_iter() {
+    //                     let signed_tx = tx.into_signed().map_err(|e| {
+    //                         RpcError::invalid_params(format!("Invalid params: failed to convert from a rpc transaction to signed transaction {:?}", e))
+    //                     })?;
+    //                     transactions.push(Arc::new(signed_tx));
+    //                 }
+    //                 transactions
+    //             },
+    //         )),
+    //     }
+    // }
 }
 
 /// Block header representation.

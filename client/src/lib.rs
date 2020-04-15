@@ -5,9 +5,6 @@
 #![recursion_limit = "512"]
 #![allow(deprecated)]
 
-use jsonrpc_http_server as http;
-use jsonrpc_tcp_server as tcp;
-
 #[macro_use]
 extern crate error_chain;
 #[macro_use]
@@ -16,8 +13,6 @@ extern crate log;
 extern crate serde_derive;
 extern crate cfxkey as keylib;
 
-#[macro_use]
-mod config_macro;
 pub mod accounts;
 pub mod archive;
 pub mod common;

@@ -2,48 +2,36 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use std::{sync::Arc, thread, time::Duration};
-
-use cfx_types::{Address, U256};
-use network::NetworkService;
-use parking_lot::{Condvar, Mutex};
-use runtime::Runtime;
-use secret_store::SecretStore;
-use threadpool::ThreadPool;
+use super::TESTNET_VERSION;
 
 use crate::{
+    common::ClientComponents,
     configuration::Configuration,
-    rpc::{
-        extractor::RpcExtractor,
-        impls::{
-            common::RpcImpl as CommonImpl, light::RpcImpl, pubsub::PubSubClient,
-        },
-        setup_debug_rpc_apis_light, setup_public_rpc_apis_light,
-    },
+    rpc::{LightDependencies, RpcHandle},
 };
+
+use blockgen::BlockGenerator;
+use cfx_types::{Address, U256};
 use cfxcore::{
     block_data_manager::BlockDataManager, genesis, statistics::Statistics,
     storage::StorageManager, transaction_pool::DEFAULT_MAX_BLOCK_GAS_LIMIT,
     vm_factory::VmFactory, ConsensusGraph, LightQueryService, Notifications,
     SynchronizationGraph, TransactionPool, WORKER_COMPUTATION_PARALLELISM,
 };
-use std::str::FromStr;
-
-use super::{
-    http::Server as HttpServer, tcp::Server as TcpServer, TESTNET_VERSION,
-};
-use crate::common::ClientComponents;
-use blockgen::BlockGenerator;
+use network::NetworkService;
+use parking_lot::{Condvar, Mutex};
+use runtime::Runtime;
+use secret_store::SecretStore;
+use std::{str::FromStr, sync::Arc, thread, time::Duration};
+use threadpool::ThreadPool;
 
 pub struct LightClientExtraComponents {
     pub consensus: Arc<ConsensusGraph>,
-    pub debug_rpc_http_server: Option<HttpServer>,
     pub light: Arc<LightQueryService>,
-    pub rpc_http_server: Option<HttpServer>,
-    pub rpc_tcp_server: Option<TcpServer>,
+    pub rpc_handle: RpcHandle,
+    pub runtime: Arc<Runtime>,
     pub secret_store: Arc<SecretStore>,
     pub txpool: Arc<TransactionPool>,
-    pub runtime: Runtime,
 }
 
 pub struct LightClient {}
@@ -173,6 +161,8 @@ impl LightClient {
             Arc::new(network)
         };
 
+        let runtime = Arc::new(Runtime::with_default_thread_count());
+
         let light = Arc::new(LightQueryService::new(
             consensus.clone(),
             sync_graph,
@@ -181,84 +171,28 @@ impl LightClient {
         ));
         light.register().unwrap();
 
-        let rpc_impl = Arc::new(RpcImpl::new(light.clone()));
+        let rpc_deps = LightDependencies {
+            consensus: consensus.clone(),
+            exit: exit.clone(),
+            light: light.clone(),
+            network: network.clone(),
+            notifications: notifications.clone(),
+            runtime: runtime.clone(),
+            txpool: txpool.clone(),
+        };
 
-        let common_impl = Arc::new(CommonImpl::new(
-            exit,
-            consensus.clone(),
-            network,
-            txpool.clone(),
-        ));
-
-        let runtime = Runtime::with_default_thread_count();
-        let pubsub = PubSubClient::new(
-            runtime.executor(),
-            consensus.clone(),
-            notifications,
-        );
-
-        let debug_rpc_http_server = super::rpc::start_http(
-            super::rpc::HttpConfiguration::new(
-                Some((127, 0, 0, 1)),
-                conf.raw_conf.jsonrpc_local_http_port,
-                conf.raw_conf.jsonrpc_cors.clone(),
-                conf.raw_conf.jsonrpc_http_keep_alive,
-            ),
-            setup_debug_rpc_apis_light(
-                common_impl.clone(),
-                rpc_impl.clone(),
-                None,
-            ),
-        )?;
-
-        let rpc_tcp_server = super::rpc::start_tcp(
-            super::rpc::TcpConfiguration::new(
-                None,
-                conf.raw_conf.jsonrpc_tcp_port,
-            ),
-            if conf.is_test_mode() {
-                setup_debug_rpc_apis_light(
-                    common_impl.clone(),
-                    rpc_impl.clone(),
-                    Some(pubsub),
-                )
-            } else {
-                setup_public_rpc_apis_light(
-                    common_impl.clone(),
-                    rpc_impl.clone(),
-                    Some(pubsub),
-                    &conf,
-                )
-            },
-            RpcExtractor,
-        )?;
-
-        let rpc_http_server = super::rpc::start_http(
-            super::rpc::HttpConfiguration::new(
-                None,
-                conf.raw_conf.jsonrpc_http_port,
-                conf.raw_conf.jsonrpc_cors.clone(),
-                conf.raw_conf.jsonrpc_http_keep_alive,
-            ),
-            if conf.is_test_mode() {
-                setup_debug_rpc_apis_light(common_impl, rpc_impl, None)
-            } else {
-                setup_public_rpc_apis_light(common_impl, rpc_impl, None, &conf)
-            },
-        )?;
+        let rpc_handle = super::rpc::set_up_rpc(conf, rpc_deps)?;
 
         Ok(Box::new(ClientComponents {
             data_manager_weak_ptr: Arc::downgrade(&data_man),
             blockgen: None,
             other_components: LightClientExtraComponents {
                 consensus,
-                debug_rpc_http_server,
                 light,
-                rpc_http_server,
-                rpc_tcp_server,
+                rpc_handle,
+                runtime,
                 secret_store,
                 txpool,
-                runtime,
             },
         }))
     }

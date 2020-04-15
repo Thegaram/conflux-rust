@@ -10,11 +10,10 @@ use crate::{
     },
 };
 use cfx_types::U256;
-use cfxkey::{Error, Password};
+use cfxkey::Password;
 use primitives::{
     transaction::Action, SignedTransaction,
     Transaction as PrimitiveTransaction, TransactionWithSignature,
-    TransactionWithSignatureSerializePart,
 };
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
@@ -80,33 +79,33 @@ impl Transaction {
         }
     }
 
-    pub fn into_signed(self) -> Result<SignedTransaction, Error> {
-        let tx_with_sig = TransactionWithSignature {
-            transaction: TransactionWithSignatureSerializePart {
-                unsigned: PrimitiveTransaction {
-                    nonce: self.nonce.into(),
-                    gas_price: self.gas_price.into(),
-                    gas: self.gas.into(),
-                    action: match self.to {
-                        None => Action::Create,
-                        Some(address) => Action::Call(address.into()),
-                    },
-                    value: self.value.into(),
-                    storage_limit: self.storage_limit.into(),
-                    epoch_height: self.epoch_height.as_usize() as u64,
-                    chain_id: self.chain_id.as_usize() as u64,
-                    data: self.data.into(),
-                },
-                v: self.v.as_usize() as u8,
-                r: self.r.into(),
-                s: self.s.into(),
-            },
-            hash: self.hash.into(),
-            rlp_size: None,
-        };
-        let public = tx_with_sig.recover_public()?;
-        Ok(SignedTransaction::new(public, tx_with_sig))
-    }
+    // pub fn into_signed(self) -> Result<SignedTransaction, Error> {
+    //     let tx_with_sig = TransactionWithSignature {
+    //         transaction: TransactionWithSignatureSerializePart {
+    //             unsigned: PrimitiveTransaction {
+    //                 nonce: self.nonce.into(),
+    //                 gas_price: self.gas_price.into(),
+    //                 gas: self.gas.into(),
+    //                 action: match self.to {
+    //                     None => Action::Create,
+    //                     Some(address) => Action::Call(address.into()),
+    //                 },
+    //                 value: self.value.into(),
+    //                 storage_limit: self.storage_limit.into(),
+    //                 epoch_height: self.epoch_height.as_usize() as u64,
+    //                 chain_id: self.chain_id.as_usize() as u64,
+    //                 data: self.data.into(),
+    //             },
+    //             v: self.v.as_usize() as u8,
+    //             r: self.r.into(),
+    //             s: self.s.into(),
+    //         },
+    //         hash: self.hash.into(),
+    //         rlp_size: None,
+    //     };
+    //     let public = tx_with_sig.recover_public()?;
+    //     Ok(SignedTransaction::new(public, tx_with_sig))
+    // }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

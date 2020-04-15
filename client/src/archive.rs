@@ -2,22 +2,15 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use super::{
-    http::Server as HttpServer, tcp::Server as TcpServer, TESTNET_VERSION,
-};
-pub use crate::configuration::Configuration;
-use blockgen::BlockGenerator;
+use super::TESTNET_VERSION;
 
 use crate::{
     common::{initialize_txgens, ClientComponents},
-    rpc::{
-        extractor::RpcExtractor,
-        impls::{
-            cfx::RpcImpl, common::RpcImpl as CommonImpl, pubsub::PubSubClient,
-        },
-        setup_debug_rpc_apis, setup_public_rpc_apis,
-    },
+    configuration::Configuration,
+    rpc::{FullDependencies, RpcHandle},
 };
+
+use blockgen::BlockGenerator;
 use cfx_types::{Address, U256};
 use cfxcore::{
     block_data_manager::BlockDataManager, genesis, statistics::Statistics,
@@ -34,25 +27,23 @@ use std::{str::FromStr, sync::Arc, thread, time::Duration};
 use threadpool::ThreadPool;
 use txgen::propagate::DataPropagation;
 
-pub struct FullClientExtraComponents {
-    pub debug_rpc_http_server: Option<HttpServer>,
-    pub rpc_tcp_server: Option<TcpServer>,
-    pub rpc_http_server: Option<HttpServer>,
+pub struct ArchiveClientExtraComponents {
     pub consensus: Arc<ConsensusGraph>,
-    pub txpool: Arc<TransactionPool>,
-    pub sync: Arc<SynchronizationService>,
+    pub rpc_handle: RpcHandle,
+    pub runtime: Arc<Runtime>,
     pub secret_store: Arc<SecretStore>,
-    pub runtime: Runtime,
+    pub sync: Arc<SynchronizationService>,
+    pub txpool: Arc<TransactionPool>,
 }
 
-pub struct FullClient {}
+pub struct ArchiveClient {}
 
-impl FullClient {
+impl ArchiveClient {
     // Start all key components of Conflux and pass out their handles
     pub fn start(
-        mut conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
+        conf: Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
     ) -> Result<
-        Box<ClientComponents<BlockGenerator, FullClientExtraComponents>>,
+        Box<ClientComponents<BlockGenerator, ArchiveClientExtraComponents>>,
         String,
     > {
         info!("Working directory: {:?}", std::env::current_dir());
@@ -64,7 +55,8 @@ impl FullClient {
             WORKER_COMPUTATION_PARALLELISM,
         )));
 
-        let network_config = conf.net_config()?;
+        let mut network_config = conf.net_config()?;
+        network_config.max_outgoing_peers_archive = 8;
         let cache_config = conf.cache_config();
 
         let db_config = conf.db_config();
@@ -75,7 +67,7 @@ impl FullClient {
         let secret_store = Arc::new(SecretStore::new());
         let storage_manager = Arc::new(
             StorageManager::new(conf.storage_config())
-                .expect("Failed to initialize storage"),
+                .expect("Failed to initialize storage."),
         );
         {
             let storage_manager_log_weak_ptr = Arc::downgrade(&storage_manager);
@@ -163,7 +155,7 @@ impl FullClient {
             pow_config.clone(),
             sync_config,
             notifications.clone(),
-            true,
+            false,
         ));
 
         let network = {
@@ -181,9 +173,9 @@ impl FullClient {
         ));
         light_provider.clone().register(network.clone()).unwrap();
 
-        let initial_sync_phase = SyncPhaseType::CatchUpRecoverBlockHeaderFromDB;
+        let initial_sync_phase = SyncPhaseType::CatchUpRecoverBlockFromDB;
         let sync = Arc::new(SynchronizationService::new(
-            true,
+            false,
             network.clone(),
             sync_graph.clone(),
             protocol_config,
@@ -245,102 +237,34 @@ impl FullClient {
             }
         }
 
-        let rpc_impl = Arc::new(RpcImpl::new(
-            consensus.clone(),
-            sync.clone(),
-            blockgen.clone(),
-            txpool.clone(),
-            maybe_txgen.clone(),
-            maybe_direct_txgen,
-            conf.rpc_impl_config(),
-        ));
+        let runtime = Arc::new(Runtime::with_default_thread_count());
 
-        let common_impl = Arc::new(CommonImpl::new(
-            exit,
-            consensus.clone(),
-            network,
-            txpool.clone(),
-        ));
-
-        let runtime = Runtime::with_default_thread_count();
-        let pubsub = PubSubClient::new(
-            runtime.executor(),
-            consensus.clone(),
-            notifications,
-        );
-
-        let debug_rpc_http_server = super::rpc::start_http(
-            super::rpc::HttpConfiguration::new(
-                Some((127, 0, 0, 1)),
-                conf.raw_conf.jsonrpc_local_http_port,
-                conf.raw_conf.jsonrpc_cors.clone(),
-                conf.raw_conf.jsonrpc_http_keep_alive,
-            ),
-            setup_debug_rpc_apis(
-                common_impl.clone(),
-                rpc_impl.clone(),
-                None,
-                &conf,
-            ),
-        )?;
-
-        if conf.is_dev_mode() {
-            if conf.raw_conf.jsonrpc_tcp_port.is_none() {
-                conf.raw_conf.jsonrpc_tcp_port = Some(12536);
-            }
-            if conf.raw_conf.jsonrpc_http_port.is_none() {
-                conf.raw_conf.jsonrpc_http_port = Some(12537);
-            }
+        let rpc_deps = FullDependencies {
+            blockgen: blockgen.clone(),
+            conf: conf.rpc_impl_config(),
+            consensus: consensus.clone(),
+            exit: exit.clone(),
+            maybe_direct_txgen: maybe_direct_txgen.clone(),
+            maybe_txgen: maybe_txgen.clone(),
+            network: network.clone(),
+            notifications: notifications.clone(),
+            runtime: runtime.clone(),
+            sync: sync.clone(),
+            txpool: txpool.clone(),
         };
-        let rpc_tcp_server = super::rpc::start_tcp(
-            super::rpc::TcpConfiguration::new(
-                None,
-                conf.raw_conf.jsonrpc_tcp_port,
-            ),
-            if conf.is_test_or_dev_mode() {
-                setup_debug_rpc_apis(
-                    common_impl.clone(),
-                    rpc_impl.clone(),
-                    Some(pubsub),
-                    &conf,
-                )
-            } else {
-                setup_public_rpc_apis(
-                    common_impl.clone(),
-                    rpc_impl.clone(),
-                    Some(pubsub),
-                    &conf,
-                )
-            },
-            RpcExtractor,
-        )?;
 
-        let rpc_http_server = super::rpc::start_http(
-            super::rpc::HttpConfiguration::new(
-                None,
-                conf.raw_conf.jsonrpc_http_port,
-                conf.raw_conf.jsonrpc_cors.clone(),
-                conf.raw_conf.jsonrpc_http_keep_alive,
-            ),
-            if conf.is_test_or_dev_mode() {
-                setup_debug_rpc_apis(common_impl, rpc_impl, None, &conf)
-            } else {
-                setup_public_rpc_apis(common_impl, rpc_impl, None, &conf)
-            },
-        )?;
+        let rpc_handle = super::rpc::set_up_rpc(conf, rpc_deps)?;
 
         Ok(Box::new(ClientComponents {
             data_manager_weak_ptr: Arc::downgrade(&data_man),
             blockgen: Some(blockgen),
-            other_components: FullClientExtraComponents {
-                debug_rpc_http_server,
-                rpc_http_server,
-                rpc_tcp_server,
-                txpool,
+            other_components: ArchiveClientExtraComponents {
                 consensus,
+                rpc_handle,
+                runtime,
                 secret_store,
                 sync,
-                runtime,
+                txpool,
             },
         }))
     }

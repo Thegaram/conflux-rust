@@ -2,6 +2,7 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
+use super::helpers::errors::request_rejected_too_many_request_error;
 use futures01::{future::poll_fn, Async, Future};
 use jsonrpc_core::{
     BoxFuture, Metadata, Params, RemoteProcedure, Result as RpcResult,
@@ -9,6 +10,7 @@ use jsonrpc_core::{
 };
 use serde_json::Value;
 use std::{collections::HashMap, marker::PhantomData, sync::Arc};
+use throttling::token_bucket::{ThrottleResult, TokenBucketManager};
 
 pub trait RpcInterceptor: Send + Sync + 'static {
     fn before(&self, _name: &String) -> RpcResult<()>;
@@ -113,6 +115,50 @@ where
             before_future.and_then(move |_| method.call(params, meta));
 
         Box::new(method_future)
+    }
+}
+
+pub struct ThrottleInterceptor {
+    manager: TokenBucketManager,
+}
+
+impl ThrottleInterceptor {
+    pub fn new(file: &Option<String>, section: &str) -> Self {
+        let manager = match file {
+            Some(file) => TokenBucketManager::load(file, Some(section))
+                .expect("invalid throttling configuration file"),
+            None => TokenBucketManager::default(),
+        };
+
+        ThrottleInterceptor { manager }
+    }
+}
+
+impl RpcInterceptor for ThrottleInterceptor {
+    fn before(&self, name: &String) -> RpcResult<()> {
+        let bucket = match self.manager.get(name) {
+            Some(bucket) => bucket,
+            None => return Ok(()),
+        };
+
+        let result = bucket.lock().throttle();
+
+        match result {
+            ThrottleResult::Success => Ok(()),
+            ThrottleResult::Throttled(wait_time) => {
+                debug!("RPC {} throttled in {:?}", name, wait_time);
+                bail!(request_rejected_too_many_request_error(Some(format!(
+                    "throttled in {:?}",
+                    wait_time
+                ))))
+            }
+            ThrottleResult::AlreadyThrottled => {
+                debug!("RPC {} already throttled", name);
+                bail!(request_rejected_too_many_request_error(Some(
+                    "already throttled, please try again later".into()
+                )))
+            }
+        }
     }
 }
 
