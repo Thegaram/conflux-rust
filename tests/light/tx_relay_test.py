@@ -151,6 +151,9 @@ class TxRelayTest(ConfluxTestFramework):
 
         latest_epoch = self.rpc[FULLNODE0].epoch_number()
 
+        self.log.info(f"!!! latest epoch full: {self.rpc[FULLNODE0].epoch_number()}")
+        self.log.info(f"!!! latest epoch light: {self.rpc[LIGHTNODE].epoch_number()}")
+
         # check balances for each address on all nodes
         for (_, receiver, value) in txs:
             # pick random epoch from the ones that have all balance information

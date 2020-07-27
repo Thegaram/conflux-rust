@@ -256,7 +256,7 @@ impl Handler {
                     // receive epoch number and keep offset
                     // we need to keep an offset so that we have enough headers to calculate the blame ratio
                     // TODO: use blocking recv with timeout instead
-                    trace!("try_recv...");
+                    debug!("try_recv...");
 
                     let mut epochs = vec![];
 
@@ -273,7 +273,7 @@ impl Handler {
                         continue;
                     }
 
-                    trace!("Blame verification received epochs {:?}", epochs);
+                    debug!("Blame verification received epochs {:?}", epochs);
 
                     // lock ConsensusInner while processing this batch
                     // to make sure we are not lagging behind too much
@@ -300,7 +300,7 @@ impl Handler {
 
                             // epoch already handled through witness
                             e if e < next_epoch_to_process => {
-                                trace!("Epoch already covered, skipping (e = {}, next_epoch_to_process = {})", e, next_epoch_to_process);
+                                debug!("Epoch already covered, skipping (e = {}, next_epoch_to_process = {})", e, next_epoch_to_process);
                                 last_epoch_received = e;
                                 continue;
                             }
@@ -321,7 +321,7 @@ impl Handler {
                         // convert epoch number into pivot height
                         let height = epoch + DEFERRED_STATE_EPOCH_COUNT;
 
-                        trace!("Finding witness for epoch {}...", epoch);
+                        debug!("Finding witness for epoch {}...", epoch);
 
                         // check blaming
                         match ledger.witness_of_header_at(height) {
@@ -347,7 +347,7 @@ impl Handler {
 
                             // header is not blamed (i.e. it is its own witness)
                             Some(w) if w == height => {
-                                trace!("Epoch {} (height {}) is NOT blamed", epoch, height);
+                                debug!("Epoch {} (height {}) is NOT blamed", epoch, height);
 
                                 let header = ledger.pivot_header_of(height).expect("pivot header should exist");
 
@@ -373,7 +373,7 @@ impl Handler {
 
                             // header is blamed
                             Some(w) => {
-                                trace!("Epoch {} (height {}) is blamed, requesting witness {}", epoch, height, w);
+                                debug!("Epoch {} (height {}) is blamed, requesting witness {}", epoch, height, w);
 
                                 // this request covers all blamed headers:
                                 // [height, height + 1, ..., w]
