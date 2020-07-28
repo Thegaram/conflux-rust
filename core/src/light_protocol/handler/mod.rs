@@ -354,21 +354,34 @@ impl Handler {
                                 // in case `w == height` but this header is also blaming previous headers,
                                 // we must have already requested the corresponding roots in a previous
                                 // iteration and skipped this header using `next_epoch_to_process`.
-                                assert_eq!(header.blame(), 0);
+                                // if this is not the case, there has been a chain reorg an we need to try again.
 
-                                // TODO(thegaram): storing roots of correct headers is redundant.
-                                // should we use a simple placeholder instead?
-                                witnesses.verified.write().insert(
-                                    epoch,
-                                    (
-                                        *header.deferred_state_root(),
-                                        *header.deferred_receipts_root(),
-                                        *header.deferred_logs_bloom_hash(),
-                                    )
-                                );
+                                // [1. blamed] --> [2. skipped] --> [(blame=2)] --> [] -->
+                                //            \-----> [3. not skipped due to chain reorg] --> [(blame=3)]
 
-                                // continue from the next header on the pivot chain
-                                next_epoch_to_process = epoch + 1;
+                                if header.blame() > 0 {
+                                    witnesses.request(std::iter::once(w));
+
+                                    // skip all subsequent headers requested
+                                    assert!(w > DEFERRED_STATE_EPOCH_COUNT);
+                                    let witness_epoch = w - DEFERRED_STATE_EPOCH_COUNT;
+                                    next_epoch_to_process = witness_epoch + 1;
+                                } else {
+
+                                    // TODO(thegaram): storing roots of correct headers is redundant.
+                                    // should we use a simple placeholder instead?
+                                    witnesses.verified.write().insert(
+                                        epoch,
+                                        (
+                                            *header.deferred_state_root(),
+                                            *header.deferred_receipts_root(),
+                                            *header.deferred_logs_bloom_hash(),
+                                        )
+                                    );
+
+                                    // continue from the next header on the pivot chain
+                                    next_epoch_to_process = epoch + 1;
+                                }
                             }
 
                             // header is blamed
