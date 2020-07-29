@@ -29,10 +29,7 @@ use crate::{
     network::{NetworkContext, NetworkProtocolHandler},
     parameters::{
         consensus::DEFERRED_STATE_EPOCH_COUNT,
-        light::{
-            BLAME_CHECK_OFFSET, CATCH_UP_EPOCH_LAG_THRESHOLD, CLEANUP_PERIOD,
-            SYNC_PERIOD,
-        },
+        light::{CATCH_UP_EPOCH_LAG_THRESHOLD, CLEANUP_PERIOD, SYNC_PERIOD},
     },
     sync::{message::Throttled, SynchronizationGraph},
     Notifications, UniqueId,
@@ -227,22 +224,20 @@ impl Handler {
         }
     }
 
-    // TODO
-    // start a standalone thread for pivot chain blame verification. this thread
-    // will step through the pivot chain headers one-by-one (received from
-    // `ConsensusExecutor`), retrieving the correct roots for blamed ones. if
-    // there is a pivot chain reorg, the corresponding headers will be processed
-    // again. this thread will be stopped once `Handler` is dropped.
+    // start a standalone thread for requesting witnessess.
+    // this thread will be stopped once `Handler` is dropped.
     fn start_blame_verification_thread(
         consensus: SharedConsensusGraph, notifications: Arc<Notifications>,
         witnesses: Arc<Witnesses>, stopped: Arc<AtomicBool>,
-    ) {
+    )
+    {
         // detach thread as we do not need to join it
         let _handle = std::thread::Builder::new()
             .name("Blame Verification Worker".into())
             .spawn(move || {
                 let ledger = LedgerInfo::new(consensus.clone());
-                let mut receiver = notifications.blame_verification_results.subscribe();
+                let mut receiver =
+                    notifications.blame_verification_results.subscribe();
 
                 loop {
                     // `stopped` is set during Drop
@@ -250,7 +245,9 @@ impl Handler {
                         break;
                     }
 
+                    // ----------- debug -----------
                     debug!("try_recv...");
+                    // ----------- debug -----------
 
                     let (height, maybe_witness) = match receiver.try_recv() {
                         Ok(x) => x,
@@ -258,30 +255,43 @@ impl Handler {
                         Err(TryRecvError::Empty) => continue, // TODO
                     };
 
+                    // ----------- debug -----------
+                    debug!(
+                        "!!!!!! received height = {:?}, maybe_witness = {:?}",
+                        height, maybe_witness
+                    );
+                    // ----------- debug -----------
+
                     let epoch = height - DEFERRED_STATE_EPOCH_COUNT;
-                    let header = ledger.pivot_header_of(height).expect("pivot header should exist");
+                    let header = ledger
+                        .pivot_header_of(height)
+                        .expect("pivot header should exist");
 
                     match maybe_witness {
                         None => {
                             // store directly
-                            // TODO(thegaram): storing roots of correct headers is redundant.
-                            // should we use a simple placeholder instead?
+                            // TODO(thegaram): storing roots of correct headers
+                            // is redundant. should we use a simple placeholder
+                            // instead?
+                            debug!("!!!! inserting");
                             witnesses.verified.write().insert(
                                 epoch,
                                 (
                                     *header.deferred_state_root(),
                                     *header.deferred_receipts_root(),
                                     *header.deferred_logs_bloom_hash(),
-                                )
+                                ),
                             );
                         }
                         Some(w) => {
                             // this request covers all blamed headers:
                             // [w - w.blame, w - w.blame + 1, ..., w]
+                            debug!("!!!! requesting witness {}", w);
                             witnesses.request(std::iter::once(w));
                         }
                     }
 
+                    debug!("!!!! latest verifiable set to {}", height);
                     *witnesses.latest_verified_header.write() = height;
                 }
             })

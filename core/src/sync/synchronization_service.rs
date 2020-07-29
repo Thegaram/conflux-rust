@@ -8,9 +8,10 @@ use super::{
 use crate::{
     light_protocol::Provider as LightProvider,
     sync::{
-        request_manager::RequestManager, synchronization_phases::SyncPhaseType,
+        node_type::NodeType, request_manager::RequestManager,
+        synchronization_phases::SyncPhaseType,
         synchronization_protocol_handler::ProtocolConfiguration,
-        StateSyncConfiguration, SynchronizationPhaseTrait, node_type::NodeType,
+        StateSyncConfiguration, SynchronizationPhaseTrait,
     },
 };
 use cfx_types::H256;

@@ -34,11 +34,11 @@ use crate::{
     statedb::StateDb,
     statistics::SharedStatistics,
     storage::state_manager::StateManagerTrait,
+    sync::node_type::NodeType,
     transaction_pool::SharedTransactionPool,
     verification::VerificationConfig,
     vm_factory::VmFactory,
     Notifications,
-    sync::node_type::NodeType,
 };
 use cfx_types::{BigEndianHash, Bloom, H160, H256, U256, U512};
 use either::Either;

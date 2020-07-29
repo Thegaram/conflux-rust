@@ -2,6 +2,7 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
+mod blame_verifier;
 pub mod confirmation_meter;
 pub mod consensus_executor;
 pub mod consensus_new_block_handler;

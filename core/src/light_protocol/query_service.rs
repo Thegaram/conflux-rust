@@ -496,7 +496,7 @@ impl QueryService {
             _ => {
                 return Err(FilterError::UnableToVerify {
                     epoch: 0,
-                    latest_verifiable: 0,
+                    latest_verifiable: latest_verified,
                 });
             }
         };

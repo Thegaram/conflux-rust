@@ -12,10 +12,12 @@ use crate::{
     pow::{PowComputer, ProofOfWorkConfig},
     state_exposer::{SyncGraphBlockState, STATE_EXPOSER},
     statistics::SharedStatistics,
-    sync::synchronization_protocol_handler::FutureBlockContainer,
+    sync::{
+        node_type::NodeType,
+        synchronization_protocol_handler::FutureBlockContainer,
+    },
     verification::*,
     ConsensusGraph, Notifications,
-    sync::node_type::NodeType,
 };
 use cfx_types::{H256, U256};
 use futures::executor::block_on;

@@ -121,7 +121,8 @@ pub mod client_methods {
 }
 
 pub fn initialize_common_modules(
-    conf: &Configuration, exit: Arc<(Mutex<bool>, Condvar)>, node_type: NodeType,
+    conf: &Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
+    node_type: NodeType,
 ) -> Result<
     (
         Arc<Machine>,
@@ -139,7 +140,8 @@ pub fn initialize_common_modules(
         Runtime,
     ),
     String,
-> {
+>
+{
     info!("Working directory: {:?}", std::env::current_dir());
 
     metrics::initialize(conf.metrics_config());
@@ -312,7 +314,8 @@ pub fn initialize_common_modules(
 }
 
 pub fn initialize_not_light_node_modules(
-    conf: &Configuration, exit: Arc<(Mutex<bool>, Condvar)>, node_type: NodeType,
+    conf: &Configuration, exit: Arc<(Mutex<bool>, Condvar)>,
+    node_type: NodeType,
 ) -> Result<
     (
         Arc<BlockDataManager>,
@@ -328,7 +331,8 @@ pub fn initialize_not_light_node_modules(
         Runtime,
     ),
     String,
-> {
+>
+{
     let (
         _machine,
         secret_store,
