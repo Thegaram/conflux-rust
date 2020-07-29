@@ -17,6 +17,7 @@ use crate::{
     state_exposer::{ConsensusGraphBlockState, STATE_EXPOSER},
     statistics::SharedStatistics,
     Notifications, SharedTransactionPool,
+    sync::node_type::NodeType,
 };
 use cfx_types::H256;
 use hibitset::{BitSet, BitSetLike, DrainableBitSet};
@@ -46,6 +47,7 @@ pub struct ConsensusNewBlockHandler {
     /// TODO
     last_epoch_received: Mutex<u64>,
     next_epoch_to_process: Mutex<u64>,
+    node_type: NodeType,
 }
 
 /// ConsensusNewBlockHandler contains all sub-routines for handling new arriving
@@ -55,7 +57,7 @@ impl ConsensusNewBlockHandler {
     pub fn new(
         conf: ConsensusConfig, txpool: SharedTransactionPool,
         data_man: Arc<BlockDataManager>, executor: Arc<ConsensusExecutor>,
-        statistics: SharedStatistics, notifications: Arc<Notifications>,
+        statistics: SharedStatistics, notifications: Arc<Notifications>, node_type: NodeType,
     ) -> Self
     {
         let epochs_sender = notifications.epochs_ordered.clone();
@@ -71,6 +73,7 @@ impl ConsensusNewBlockHandler {
             blame_sender,
             last_epoch_received: Mutex::new(0),
             next_epoch_to_process: Mutex::new(0),
+            node_type,
         }
     }
 
@@ -1579,7 +1582,10 @@ impl ConsensusNewBlockHandler {
             let epoch_hashes = inner.get_epoch_block_hashes(arena_index);
             trace!("ConsensusNewBlockHandler sending epoch {}", epoch_number);
             self.epochs_sender.send((epoch_number, epoch_hashes));
-            self.verify_epoch_blame(inner, epoch_number);
+
+            if let NodeType::Light = self.node_type {
+                self.verify_epoch_blame(inner, epoch_number);
+            }
         }
 
         // If we are inserting header only, we will skip execution and
@@ -2057,7 +2063,7 @@ impl ConsensusNewBlockHandler {
             // sanity check: epochs are sent in order, one-by-one
             e if e > *last_epoch_received + 1 => {
                 error!("Unexpected epoch number: e = {}, last_epoch_received = {}", e, *last_epoch_received);
-                assert!(false);
+                assert!(false); // this is failing on ghast_consensus_test.py !!!
             }
 
             // epoch already handled through witness

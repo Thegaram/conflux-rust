@@ -38,6 +38,7 @@ use crate::{
     verification::VerificationConfig,
     vm_factory::VmFactory,
     Notifications,
+    sync::node_type::NodeType,
 };
 use cfx_types::{BigEndianHash, Bloom, H160, H256, U256, U512};
 use either::Either;
@@ -172,7 +173,7 @@ pub struct ConsensusGraph {
     pub config: ConsensusConfig,
 
     /// Whether this instance is an archive or full node.
-    is_full_node: bool,
+    node_type: NodeType,
 }
 
 impl MallocSizeOf for ConsensusGraph {
@@ -199,7 +200,7 @@ impl ConsensusGraph {
         era_genesis_block_hash: &H256, era_stable_block_hash: &H256,
         notifications: Arc<Notifications>,
         execution_conf: ConsensusExecutionConfiguration,
-        verification_config: VerificationConfig, is_full_node: bool,
+        verification_config: VerificationConfig, node_type: NodeType,
     ) -> Self
     {
         let inner =
@@ -235,13 +236,14 @@ impl ConsensusGraph {
                 executor,
                 statistics,
                 notifications,
+                node_type,
             ),
             confirmation_meter,
             best_info: RwLock::new(Arc::new(Default::default())),
             pivot_block_state_valid_map: Default::default(),
             synced_epoch_id: Default::default(),
             config: conf,
-            is_full_node,
+            node_type,
         };
         graph.update_best_info();
         graph
@@ -261,7 +263,7 @@ impl ConsensusGraph {
         pow_config: ProofOfWorkConfig, pow: Arc<PowComputer>,
         notifications: Arc<Notifications>,
         execution_conf: ConsensusExecutionConfiguration,
-        verification_conf: VerificationConfig, is_full_node: bool,
+        verification_conf: VerificationConfig, node_type: NodeType,
     ) -> Self
     {
         let genesis_hash = data_man.get_cur_consensus_era_genesis_hash();
@@ -279,7 +281,7 @@ impl ConsensusGraph {
             notifications,
             execution_conf,
             verification_conf,
-            is_full_node,
+            node_type,
         )
     }
 
@@ -758,10 +760,9 @@ impl ConsensusGraph {
     }
 
     fn earliest_epoch_available(&self) -> u64 {
-        if self.is_full_node {
-            self.latest_checkpoint_epoch_number()
-        } else {
-            0
+        match self.node_type {
+            NodeType::Archive => 0,
+            _ => self.latest_checkpoint_epoch_number(),
         }
     }
 

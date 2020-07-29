@@ -22,6 +22,7 @@ use crate::{
 use blockgen::BlockGenerator;
 use cfxcore::{
     pow::PowComputer, ConsensusGraph, LightQueryService, TransactionPool,
+    sync::node_type::NodeType,
 };
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use runtime::Runtime;
@@ -70,7 +71,7 @@ impl LightClient {
         ) = initialize_common_modules(
             &conf,
             exit.clone(),
-            false, /* is_full_node */
+            NodeType::Light,
         )?;
 
         let light = Arc::new(LightQueryService::new(

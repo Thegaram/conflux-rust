@@ -414,7 +414,7 @@ pub struct ProtocolConfiguration {
 
 impl SynchronizationProtocolHandler {
     pub fn new(
-        is_full_node: bool, protocol_config: ProtocolConfiguration,
+        node_type: NodeType, protocol_config: ProtocolConfiguration,
         state_sync_config: StateSyncConfiguration,
         initial_sync_phase: SyncPhaseType,
         sync_graph: SharedSynchronizationGraph,
@@ -423,7 +423,7 @@ impl SynchronizationProtocolHandler {
     {
         let sync_state = Arc::new(SynchronizationState::new(
             protocol_config.is_consortium,
-            is_full_node,
+            node_type,
             protocol_config.dev_mode || protocol_config.test_mode,
         ));
         let recover_public_queue = Arc::new(AsyncTaskQueue::new(

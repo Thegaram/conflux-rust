@@ -77,7 +77,6 @@ pub mod unique_id;
 pub mod verification;
 pub mod vm;
 pub mod vm_factory;
-pub mod node_type;
 
 pub mod test_helpers;
 

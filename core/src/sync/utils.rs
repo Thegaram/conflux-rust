@@ -22,6 +22,7 @@ use crate::{
     verification::VerificationConfig,
     vm_factory::VmFactory,
     ConsensusGraph, Notifications, TransactionPool,
+    sync::node_type::NodeType,
 };
 use cfx_types::{address_util::AddressUtil, Address, H256, U256};
 use core::str::FromStr;
@@ -220,7 +221,7 @@ pub fn initialize_synchronization_graph_with_data_manager(
             base_reward_table_in_ucfx: vec![INITIAL_BASE_MINING_REWARD_IN_UCFX],
         },
         verification_config.clone(),
-        false, /* is_full_node */
+        NodeType::Archive,
     ));
 
     let sync = Arc::new(SynchronizationGraph::new(
@@ -230,7 +231,7 @@ pub fn initialize_synchronization_graph_with_data_manager(
         pow.clone(),
         sync_config,
         notifications,
-        false, /* is_full_node */
+        NodeType::Archive,
         machine,
     ));
 

@@ -10,7 +10,7 @@ use crate::{
     sync::{
         request_manager::RequestManager, synchronization_phases::SyncPhaseType,
         synchronization_protocol_handler::ProtocolConfiguration,
-        StateSyncConfiguration, SynchronizationPhaseTrait,
+        StateSyncConfiguration, SynchronizationPhaseTrait, node_type::NodeType,
     },
 };
 use cfx_types::H256;
@@ -30,7 +30,7 @@ pub struct SynchronizationService {
 
 impl SynchronizationService {
     pub fn new(
-        is_full_node: bool, network: Arc<NetworkService>,
+        node_type: NodeType, network: Arc<NetworkService>,
         sync_graph: SharedSynchronizationGraph,
         protocol_config: ProtocolConfiguration,
         state_sync_config: StateSyncConfiguration,
@@ -38,7 +38,7 @@ impl SynchronizationService {
     ) -> Self
     {
         let sync_handler = Arc::new(SynchronizationProtocolHandler::new(
-            is_full_node,
+            node_type,
             protocol_config,
             state_sync_config,
             initial_sync_phase,

@@ -3,6 +3,7 @@
 // See http://www.gnu.org/licenses/
 
 use cfx_types::address_util::AddressUtil;
+use cfxcore::sync::node_type::NodeType;
 
 /// Hold all top-level components for a type of client.
 /// This struct implement ClientShutdownTrait.
@@ -120,7 +121,7 @@ pub mod client_methods {
 }
 
 pub fn initialize_common_modules(
-    conf: &Configuration, exit: Arc<(Mutex<bool>, Condvar)>, is_full_node: bool,
+    conf: &Configuration, exit: Arc<(Mutex<bool>, Condvar)>, node_type: NodeType,
 ) -> Result<
     (
         Arc<Machine>,
@@ -243,7 +244,7 @@ pub fn initialize_common_modules(
         notifications.clone(),
         conf.execution_config(),
         conf.verification_config(),
-        is_full_node,
+        node_type,
     ));
 
     let verification_config = conf.verification_config();
@@ -256,7 +257,7 @@ pub fn initialize_common_modules(
         pow.clone(),
         sync_config,
         notifications.clone(),
-        is_full_node,
+        node_type,
         machine.clone(),
     ));
 
@@ -311,7 +312,7 @@ pub fn initialize_common_modules(
 }
 
 pub fn initialize_not_light_node_modules(
-    conf: &Configuration, exit: Arc<(Mutex<bool>, Condvar)>, is_full_node: bool,
+    conf: &Configuration, exit: Arc<(Mutex<bool>, Condvar)>, node_type: NodeType,
 ) -> Result<
     (
         Arc<BlockDataManager>,
@@ -342,7 +343,7 @@ pub fn initialize_not_light_node_modules(
         _notifications,
         pubsub,
         runtime,
-    ) = initialize_common_modules(&conf, exit.clone(), is_full_node)?;
+    ) = initialize_common_modules(&conf, exit.clone(), node_type)?;
 
     let light_provider = Arc::new(LightProvider::new(
         consensus.clone(),
@@ -350,17 +351,17 @@ pub fn initialize_not_light_node_modules(
         Arc::downgrade(&network),
         txpool.clone(),
         conf.raw_conf.throttling_conf.clone(),
-        is_full_node,
+        node_type,
     ));
     light_provider.register(network.clone()).unwrap();
 
-    let initial_sync_phase = if is_full_node {
-        SyncPhaseType::CatchUpRecoverBlockHeaderFromDB
-    } else {
-        SyncPhaseType::CatchUpRecoverBlockFromDB
+    let initial_sync_phase = match node_type {
+        NodeType::Archive => SyncPhaseType::CatchUpRecoverBlockFromDB,
+        _ => SyncPhaseType::CatchUpRecoverBlockHeaderFromDB,
     };
+
     let sync = Arc::new(SynchronizationService::new(
-        is_full_node,
+        node_type,
         network.clone(),
         sync_graph.clone(),
         conf.protocol_config(),
