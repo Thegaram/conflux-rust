@@ -88,10 +88,6 @@ pub trait ConsensusGraphTrait: Send + Sync {
 
     fn get_trusted_blame_block(&self, stable_hash: &H256) -> Option<H256>;
 
-    fn first_trusted_header_starting_from(
-        &self, height: u64, blame_bound: Option<u32>,
-    ) -> Option<u64>;
-
     fn set_initial_sequence_number(&self, initial_sn: u64);
 
     fn update_best_info(&self);

@@ -1507,26 +1507,6 @@ impl ConsensusGraphTrait for ConsensusGraph {
         return self.inner.read();
     }
 
-    /// Starting from header `height` on the pivot chain, find the first header
-    /// with sufficiently low blame ratio within `blame_bound`.
-    /// Return `None` if no such header exists OR if `height` is not available
-    /// in memory.
-    fn first_trusted_header_starting_from(
-        &self, height: u64, blame_bound: Option<u32>,
-    ) -> Option<u64> {
-        let inner = self.inner.read_recursive();
-
-        // check if `height` is available in memory
-        let pivot_index = match height {
-            h if h < inner.get_cur_era_genesis_height() => return None,
-            h => inner.height_to_pivot_index(h),
-        };
-
-        let trusted =
-            inner.find_first_trusted_starting_from(pivot_index, blame_bound);
-        trusted.map(|index| inner.pivot_index_to_height(index))
-    }
-
     /// Find a trusted blame block for checkpoint
     fn get_trusted_blame_block(&self, stable_hash: &H256) -> Option<H256> {
         self.inner.read().get_trusted_blame_block(stable_hash, 0)

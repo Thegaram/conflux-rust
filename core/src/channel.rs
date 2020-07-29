@@ -97,6 +97,7 @@ impl<T: Clone> Channel<T> {
 pub struct Notifications {
     pub new_block_hashes: Arc<Channel<(H256, bool)>>,
     pub epochs_ordered: Arc<Channel<(u64, Vec<H256>)>>,
+    pub blame_verification_results: Arc<Channel<(u64, Option<u64>)>>, // <height, witness>
 }
 
 impl Notifications {
@@ -104,6 +105,7 @@ impl Notifications {
         Arc::new(Notifications {
             new_block_hashes: Arc::new(Channel::new("new-block-hashes")),
             epochs_ordered: Arc::new(Channel::new("epochs-executed")),
+            blame_verification_results: Arc::new(Channel::new("blame-verification-results")),
         })
     }
 }
@@ -259,7 +261,7 @@ mod tests {
         // create channels and add subscriptions
         let send_a = Channel::<u64>::new("test-chan-ab");
         let send_b = Channel::<u64>::new("test-chan-bc");
-        let send_c = Channel::<u64>::new("test-chan-cd");
+        let send_c = Channel::<u64>::new("test-chan-ca");
 
         let mut rec_b = send_a.subscribe();
         let mut rec_c = send_b.subscribe();

@@ -13,7 +13,7 @@ use crate::{
         },
         ConsensusConfig,
     },
-    parameters::{consensus::*, consensus_internal::*},
+    parameters::{consensus::*, consensus_internal::*, light::BLAME_CHECK_OFFSET},
     state_exposer::{ConsensusGraphBlockState, STATE_EXPOSER},
     statistics::SharedStatistics,
     Notifications, SharedTransactionPool,
@@ -27,6 +27,7 @@ use std::{
     slice::Iter,
     sync::Arc,
 };
+use parking_lot::Mutex;
 
 pub struct ConsensusNewBlockHandler {
     conf: ConsensusConfig,
@@ -38,6 +39,13 @@ pub struct ConsensusNewBlockHandler {
     /// Channel used to send epochs to PubSub
     /// Each element is <epoch_number, epoch_hashes>
     epochs_sender: Arc<Channel<(u64, Vec<H256>)>>,
+
+    /// TODO
+    blame_sender: Arc<Channel<(u64, Option<u64>)>>,
+
+    /// TODO
+    last_epoch_received: Mutex<u64>,
+    next_epoch_to_process: Mutex<u64>,
 }
 
 /// ConsensusNewBlockHandler contains all sub-routines for handling new arriving
@@ -51,6 +59,7 @@ impl ConsensusNewBlockHandler {
     ) -> Self
     {
         let epochs_sender = notifications.epochs_ordered.clone();
+        let blame_sender = notifications.blame_verification_results.clone();
 
         Self {
             conf,
@@ -59,6 +68,9 @@ impl ConsensusNewBlockHandler {
             executor,
             statistics,
             epochs_sender,
+            blame_sender,
+            last_epoch_received: Mutex::new(0),
+            next_epoch_to_process: Mutex::new(0),
         }
     }
 
@@ -1567,6 +1579,7 @@ impl ConsensusNewBlockHandler {
             let epoch_hashes = inner.get_epoch_block_hashes(arena_index);
             trace!("ConsensusNewBlockHandler sending epoch {}", epoch_number);
             self.epochs_sender.send((epoch_number, epoch_hashes));
+            self.verify_epoch_blame(inner, epoch_number);
         }
 
         // If we are inserting header only, we will skip execution and
@@ -1997,5 +2010,180 @@ impl ConsensusNewBlockHandler {
                 );
             }
         }
+    }
+
+    fn first_trusted_header_starting_from(
+        &self, inner: &ConsensusGraphInner, height: u64, blame_bound: Option<u32>,
+    ) -> Option<u64> {
+        // check if `height` is available in memory
+        let pivot_index = match height {
+            h if h < inner.get_cur_era_genesis_height() => return None,
+            h => inner.height_to_pivot_index(h),
+        };
+
+        let trusted = inner.find_first_trusted_starting_from(pivot_index, blame_bound);
+        trusted.map(|index| inner.pivot_index_to_height(index))
+    }
+
+    fn verify_epoch_blame(&self, inner: &ConsensusGraphInner, epoch: u64) {
+        // TODO: move out
+        // let mut last_epoch_received = 0;
+        // let mut next_epoch_to_process = 0;
+
+        let mut last_epoch_received = self.last_epoch_received.lock();
+        let mut next_epoch_to_process = self.next_epoch_to_process.lock();
+
+        // keep offset
+        // we need to keep an offset so that we have enough headers to calculate the blame ratio
+        let epoch = match epoch {
+            e if e < BLAME_CHECK_OFFSET => return,
+            e => e - BLAME_CHECK_OFFSET,
+        };
+
+        debug!("Blame verification received epoch {:?}", epoch);
+
+        // TODO: handle chain reorg + skipping
+        match epoch {
+            // chain reorg => process again
+            e if e <= *last_epoch_received => {
+                debug!("Chain reorg, re-processing epochs (e = {}, last_epoch_received = {})", e, *last_epoch_received);
+                *last_epoch_received = e;
+                *next_epoch_to_process = e;
+
+                // NOTE: we set `witnesses.latest_verified_header` at the end of the
+                // loop, so outdated items retrieved previously should not be used.
+            }
+
+            // sanity check: epochs are sent in order, one-by-one
+            e if e > *last_epoch_received + 1 => {
+                error!("Unexpected epoch number: e = {}, last_epoch_received = {}", e, *last_epoch_received);
+                assert!(false);
+            }
+
+            // epoch already handled through witness
+            e if e < *next_epoch_to_process => {
+                debug!("Epoch already covered, skipping (e = {}, next_epoch_to_process = {})", e, *next_epoch_to_process);
+                *last_epoch_received = e;
+                return;
+            }
+
+            // sanity check: no epochs are skipped
+            e if e > *next_epoch_to_process => {
+                error!("Unexpected epoch number: e = {}, next_epoch_to_process = {}", e, *next_epoch_to_process);
+                assert!(false);
+            }
+
+            // e == last_epoch_received + 1
+            // e == next_epoch_to_process
+            e => {
+                *last_epoch_received = e;
+            }
+        }
+
+        // convert epoch number into pivot height
+        let height = epoch + DEFERRED_STATE_EPOCH_COUNT;
+
+        debug!("Finding witness for epoch {} (height {})...", epoch, height);
+
+
+
+        /////////////////////////
+        // delete
+        let pivot_index = inner.height_to_pivot_index(height);
+        let pivot_arena_index = inner.pivot_chain[pivot_index];
+        let pivot_hash = inner.arena[pivot_arena_index].hash;
+
+        let header = self.data_man
+            .block_header_by_hash(&pivot_hash)
+            .map(|h| (*h).clone())
+            .expect("header exists"); // TODO
+        /////////////////////////
+
+        // check blame
+        match self.first_trusted_header_starting_from(
+            inner,
+            height,
+            Some(1000), /* blame_bound */
+        ) {
+            // no witness found
+            None => {
+                error!(
+                    "No witness found for epoch {} (height {});
+                    best_epoch_number = {}, latest_checkpoint_epoch_number = ",
+                    epoch,
+                    height,
+                    inner.best_epoch_number(),
+                    // consensus.latest_checkpoint_epoch_number()
+                );
+
+                // this can happen in two cases
+                // (1) we are lagging behind so much that `height` is no longer maintained in memory.
+                //     --> this seems unlikely.
+                // (2) there are too many blamed blocks on the `BLAME_CHECK_OFFSET` suffix of the
+                //     pivot chain so we cannot reliably determine the witness.
+                //     --> this is also unlikely but can in theory happen.
+                // TODO(thegaram): add retry logic for (2)
+            }
+
+            // header is not blamed (i.e. it is its own witness)
+            Some(w) if w == height => {
+                // debug!("Epoch {} (height {}) is NOT blamed", epoch, height);
+                debug!("Epoch {} (height {}) is NOT blamed (deferred_state_root = {:?}", epoch, height, header.deferred_state_root());
+
+                // let header = ledger.pivot_header_of(height).expect("pivot header should exist");
+
+                let pivot_index = inner.height_to_pivot_index(height);
+                let pivot_arena_index = inner.pivot_chain[pivot_index];
+                let pivot_hash = inner.arena[pivot_arena_index].hash;
+
+                let header = self.data_man
+                    .block_header_by_hash(&pivot_hash)
+                    .map(|h| (*h).clone())
+                    .expect("header exists"); // TODO
+
+                // in case `w == height` but this header is also blaming previous headers,
+                // we must have already requested the corresponding roots in a previous
+                // iteration and skipped this header using `next_epoch_to_process`.
+                // if this is not the case, there has been a chain reorg an we need to try again.
+
+                // [1. blamed] --> [2. skipped] --> [(blame=2)] --> [] -->
+                //            \-----> [3. not skipped due to chain reorg] --> [(blame=3)]
+
+                if header.blame() > 0 {
+                    // send blaming header
+                    // this way we make sure to request the corresponding roots
+                    self.blame_sender.send((height, Some(w)));
+
+                    // skip all subsequent headers requested
+                    assert!(w > DEFERRED_STATE_EPOCH_COUNT);
+                    let witness_epoch = w - DEFERRED_STATE_EPOCH_COUNT;
+                    *next_epoch_to_process = witness_epoch + 1;
+                } else {
+                    // send non-blaming header
+                    self.blame_sender.send((height, None));
+
+                    // continue from the next header on the pivot chain
+                    *next_epoch_to_process = epoch + 1;
+                }
+            }
+
+            // header is blamed
+            Some(w) => {
+                // debug!("Epoch {} (height {}) is blamed, requesting witness {}", epoch, height, w);
+                debug!("Epoch {} (height {}) is blamed, requesting witness {}; deferred_state_root = {:?}", epoch, height, w, header.deferred_state_root());
+
+                // this request covers all blamed headers:
+                // [height, height + 1, ..., w]
+                // witnesses.request(std::iter::once(w));
+                self.blame_sender.send((height, Some(w)));
+
+                // skip all subsequent headers requested
+                assert!(w > DEFERRED_STATE_EPOCH_COUNT);
+                let witness_epoch = w - DEFERRED_STATE_EPOCH_COUNT;
+                *next_epoch_to_process = witness_epoch + 1;
+            }
+        }
+
+        // *witnesses.latest_verified_header.write() = height;
     }
 }
