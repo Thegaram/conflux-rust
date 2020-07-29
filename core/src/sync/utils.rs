@@ -17,11 +17,11 @@ use crate::{
     pow::{self, PowComputer, ProofOfWorkConfig},
     statistics::Statistics,
     storage::{StorageConfiguration, StorageManager},
-    sync::{node_type::NodeType, SyncGraphConfig, SynchronizationGraph},
+    sync::{SyncGraphConfig, SynchronizationGraph},
     transaction_pool::TxPoolConfig,
     verification::VerificationConfig,
     vm_factory::VmFactory,
-    ConsensusGraph, Notifications, TransactionPool,
+    ConsensusGraph, NodeType, Notifications, TransactionPool,
 };
 use cfx_types::{address_util::AddressUtil, Address, H256, U256};
 use core::str::FromStr;

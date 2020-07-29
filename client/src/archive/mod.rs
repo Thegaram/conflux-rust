@@ -12,8 +12,8 @@ use crate::{
 };
 use blockgen::BlockGenerator;
 use cfxcore::{
-    pow::PowComputer, sync::node_type::NodeType, ConsensusGraph,
-    SynchronizationService, TransactionPool,
+    pow::PowComputer, ConsensusGraph, NodeType, SynchronizationService,
+    TransactionPool,
 };
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use parking_lot::{Condvar, Mutex};

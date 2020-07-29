@@ -21,8 +21,8 @@ use crate::{
 };
 use blockgen::BlockGenerator;
 use cfxcore::{
-    pow::PowComputer, sync::node_type::NodeType, ConsensusGraph,
-    LightQueryService, TransactionPool,
+    pow::PowComputer, ConsensusGraph, LightQueryService, NodeType,
+    TransactionPool,
 };
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use runtime::Runtime;

@@ -18,7 +18,6 @@ use crate::{
             GetBlockHeadersResponse, NewBlockHashes, StatusDeprecatedV1,
             StatusV2, TransactionDigests,
         },
-        node_type::NodeType,
         request_manager::{try_get_block_hashes, Request},
         state::SnapshotChunkSync,
         synchronization_phases::{SyncPhaseType, SynchronizationPhaseManager},
@@ -27,6 +26,7 @@ use crate::{
         SYNCHRONIZATION_PROTOCOL_OLD_VERSIONS_TO_SUPPORT,
         SYNCHRONIZATION_PROTOCOL_VERSION, SYNC_PROTO_V1,
     },
+    NodeType,
 };
 use cfx_types::H256;
 use io::TimerToken;

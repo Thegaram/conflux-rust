@@ -2,9 +2,6 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use cfx_types::address_util::AddressUtil;
-use cfxcore::sync::node_type::NodeType;
-
 /// Hold all top-level components for a type of client.
 /// This struct implement ClientShutdownTrait.
 pub struct ClientComponents<BlockGenT, Rest> {
@@ -728,7 +725,7 @@ use crate::{
     GENESIS_VERSION,
 };
 use blockgen::BlockGenerator;
-use cfx_types::{Address, U256};
+use cfx_types::{address_util::AddressUtil, Address, U256};
 use cfxcore::{
     block_data_manager::BlockDataManager,
     genesis::{self, genesis_block, DEV_GENESIS_KEY_PAIR_2},
@@ -738,7 +735,7 @@ use cfxcore::{
     storage::StorageManager,
     sync::SyncPhaseType,
     vm_factory::VmFactory,
-    ConsensusGraph, LightProvider, Notifications, Stopable,
+    ConsensusGraph, LightProvider, NodeType, Notifications, Stopable,
     SynchronizationGraph, SynchronizationService, TransactionPool,
     WORKER_COMPUTATION_PARALLELISM,
 };

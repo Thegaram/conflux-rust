@@ -8,9 +8,9 @@ use crate::{
     message::MsgId,
     sync::{
         message::{DynamicCapability, DynamicCapabilitySet},
-        node_type::NodeType,
         random, Error, ErrorKind,
     },
+    NodeType,
 };
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;
 use network::{

@@ -8,11 +8,11 @@ use super::{
 use crate::{
     light_protocol::Provider as LightProvider,
     sync::{
-        node_type::NodeType, request_manager::RequestManager,
-        synchronization_phases::SyncPhaseType,
+        request_manager::RequestManager, synchronization_phases::SyncPhaseType,
         synchronization_protocol_handler::ProtocolConfiguration,
         StateSyncConfiguration, SynchronizationPhaseTrait,
     },
+    NodeType,
 };
 use cfx_types::H256;
 use malloc_size_of_derive::MallocSizeOf as DeriveMallocSizeOf;

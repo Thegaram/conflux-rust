@@ -16,8 +16,7 @@ use crate::{
     parameters::{consensus::*, consensus_internal::*},
     state_exposer::{ConsensusGraphBlockState, STATE_EXPOSER},
     statistics::SharedStatistics,
-    sync::node_type::NodeType,
-    Notifications, SharedTransactionPool,
+    NodeType, Notifications, SharedTransactionPool,
 };
 use cfx_types::H256;
 use hibitset::{BitSet, BitSetLike, DrainableBitSet};
