@@ -5,10 +5,10 @@
 use crate::UniqueId;
 use cfx_types::H256;
 use parking_lot::RwLock;
-use std::{collections::BTreeMap, sync::Arc};
-use tokio::sync::mpsc;
+use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use tokio::{runtime, sync::mpsc, time::timeout};
 
-pub use tokio::sync::mpsc::error::TryRecvError;
+pub use tokio::{sync::mpsc::error::TryRecvError, time::Elapsed};
 
 pub struct Receiver<T> {
     pub id: u64,
@@ -24,6 +24,21 @@ impl<T> Receiver<T> {
 
     pub fn recv_blocking(&mut self) -> Option<T> {
         futures::executor::block_on(self.receiver.recv())
+    }
+
+    pub fn recv_with_timeout(
+        &mut self, wait_for: Duration,
+    ) -> Result<Option<T>, Elapsed> {
+        runtime::Builder::new()
+            .basic_scheduler()
+            .enable_time()
+            .build()
+            .expect("Runtime can be created")
+            // this only works in an async block, see:
+            // https://users.rust-lang.org/t/tokio-interval-not-working-in-runtime/41260/2
+            .block_on(
+                async move { timeout(wait_for, self.receiver.recv()).await },
+            )
     }
 
     // NOTE: do not capture anything in `f` that might have references to

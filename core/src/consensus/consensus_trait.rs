@@ -4,9 +4,7 @@
 
 use crate::{
     block_data_manager::BlockDataManager,
-    consensus::{
-        consensus_inner::ConsensusGraphInner, BestInformation, ConsensusConfig,
-    },
+    consensus::{BestInformation, ConsensusConfig},
     state::State,
     statistics::SharedStatistics,
     transaction_pool::SharedTransactionPool,
@@ -91,8 +89,6 @@ pub trait ConsensusGraphTrait: Send + Sync {
     fn set_initial_sequence_number(&self, initial_sn: u64);
 
     fn update_best_info(&self);
-
-    fn lock_inner(&self) -> parking_lot::RwLockReadGuard<ConsensusGraphInner>;
 }
 
 pub type SharedConsensusGraph =

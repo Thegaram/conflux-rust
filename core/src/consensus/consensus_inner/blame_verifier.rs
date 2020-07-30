@@ -91,7 +91,7 @@ impl BlameVerifier {
             e => e - BLAME_CHECK_OFFSET,
         };
 
-        debug!(
+        trace!(
             "Blame verification received epoch {:?} (last_epoch_received = {}, next_epoch_to_process = {})",
             epoch, *last_epoch_received, *next_epoch_to_process
         );
@@ -126,16 +126,16 @@ impl BlameVerifier {
             // TODO(thegaram): can a fork change the blame status of a header?
 
             e if e <= *last_epoch_received => {
-                debug!("Chain reorg, skipping");
-
                 let depth = *last_epoch_received - e;
 
                 if depth <= BLAME_CHECK_OFFSET {
                     // epoch has been processed previously, safe to skip
+                    debug!("Chain reorg ({} --> {}), skipping", *last_epoch_received, e);
                     return;
                 }
 
                 // re-process from fork point
+                debug!("Chain reorg ({} --> {}), re-executing", *last_epoch_received, e);
                 *last_epoch_received = e;
                 *next_epoch_to_process = e;
             }
@@ -196,7 +196,7 @@ impl BlameVerifier {
         // convert epoch number into pivot height
         let height = epoch + DEFERRED_STATE_EPOCH_COUNT;
 
-        debug!("Finding witness for epoch {} (height {})...", epoch, height);
+        debug!("Finding witness for header at height {} (epoch {})...", height, epoch);
 
         // check blame
         match self.first_trusted_header_starting_from(
@@ -224,16 +224,12 @@ impl BlameVerifier {
                 //     witness.
                 //       --> this is also unlikely but can in theory happen.
                 // TODO(thegaram): add retry logic for (2)
+                assert!(false);
             }
 
             // header is not blamed (i.e. it is its own witness)
             Some(w) if w == height => {
-                // debug!("Epoch {} (height {}) is NOT blamed", epoch, height);
-
-                // ----------- debug -----------
-                let header = self.header_from_height(inner, height);
-                debug!("Epoch {} (height {}) is NOT blamed; deferred_state_root = {:?}", epoch, height, header.deferred_state_root());
-                // ----------- debug -----------
+                trace!("Epoch {} (height {}) is NOT blamed", epoch, height);
 
                 let header = self.header_from_height(inner, height);
 
@@ -256,10 +252,10 @@ impl BlameVerifier {
                 //
                 // example (BLAME_CHECK_OFFSET = 2)
                 //    check is called with    C, D, E, F, G, D, H
-                //    we will process epochs  A, B, C, D, E, B, H
+                //    we will process epochs  A, B, C, D, E, B, C
                 //
                 // after the chain reorg, we will start re-executing from B
-                // B was already covered but it is blaming
+                // B was already covered in A's iteration but it is blaming
                 //   --> we do nothing, skip it
                 else {
                     // EMPTY
@@ -271,13 +267,7 @@ impl BlameVerifier {
 
             // header is blamed
             Some(w) => {
-                // debug!("Epoch {} (height {}) is blamed, requesting witness
-                // {}", epoch, height, w);
-
-                // ----------- debug -----------
-                let header = self.header_from_height(inner, height);
-                debug!("Epoch {} (height {}) is blamed, requesting witness {}; deferred_state_root = {:?}", epoch, height, w, header.deferred_state_root());
-                // ----------- debug -----------
+                debug!("Epoch {} (height {}) is blamed, requesting witness {}", epoch, height, w);
 
                 // this request covers all blamed headers:
                 // [height, height + 1, ..., w]

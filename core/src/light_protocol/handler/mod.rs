@@ -5,7 +5,6 @@
 pub mod sync;
 
 use crate::{
-    channel::TryRecvError,
     consensus::SharedConsensusGraph,
     light_protocol::{
         common::{validate_chain_id, FullPeerState, LedgerInfo, Peers},
@@ -195,7 +194,7 @@ impl Handler {
 
         let stopped = Arc::new(AtomicBool::new(false));
 
-        Self::start_blame_verification_thread(
+        Self::start_witness_worker(
             consensus.clone(),
             notifications,
             witnesses.clone(),
@@ -226,14 +225,14 @@ impl Handler {
 
     // start a standalone thread for requesting witnessess.
     // this thread will be stopped once `Handler` is dropped.
-    fn start_blame_verification_thread(
+    fn start_witness_worker(
         consensus: SharedConsensusGraph, notifications: Arc<Notifications>,
         witnesses: Arc<Witnesses>, stopped: Arc<AtomicBool>,
     )
     {
         // detach thread as we do not need to join it
         let _handle = std::thread::Builder::new()
-            .name("Blame Verification Worker".into())
+            .name("Witness Worker".into())
             .spawn(move || {
                 let ledger = LedgerInfo::new(consensus.clone());
                 let mut receiver =
@@ -245,35 +244,35 @@ impl Handler {
                         break;
                     }
 
-                    // ----------- debug -----------
-                    debug!("try_recv...");
-                    // ----------- debug -----------
+                    // receive next item from channel
+                    let wait_for = Duration::from_secs(1);
 
-                    let (height, maybe_witness) = match receiver.try_recv() {
-                        Ok(x) => x,
-                        Err(TryRecvError::Closed) => return,
-                        Err(TryRecvError::Empty) => continue, // TODO
-                    };
+                    let (height, maybe_witness) =
+                        match receiver.recv_with_timeout(wait_for) {
+                            Err(_) => continue, // channel empty, try again
+                            Ok(None) => return, // sender dropped, terminate
+                            Ok(Some(val)) => val,
+                        };
 
-                    // ----------- debug -----------
                     debug!(
-                        "!!!!!! received height = {:?}, maybe_witness = {:?}",
+                        "Witness worker received: height = {:?}, maybe_witness = {:?}",
                         height, maybe_witness
                     );
-                    // ----------- debug -----------
-
-                    let epoch = height - DEFERRED_STATE_EPOCH_COUNT;
-                    let header = ledger
-                        .pivot_header_of(height)
-                        .expect("pivot header should exist");
 
                     match maybe_witness {
+                        // header is not blamed, store directly
                         None => {
-                            // store directly
                             // TODO(thegaram): storing roots of correct headers
                             // is redundant. should we use a simple placeholder
                             // instead?
-                            debug!("!!!! inserting");
+
+                            assert!(height >= DEFERRED_STATE_EPOCH_COUNT);
+                            let epoch = height - DEFERRED_STATE_EPOCH_COUNT;
+
+                            let header = ledger
+                                .pivot_header_of(height)
+                                .expect("pivot header should exist");
+
                             witnesses.verified.write().insert(
                                 epoch,
                                 (
@@ -283,19 +282,20 @@ impl Handler {
                                 ),
                             );
                         }
+
+                        // header is blamed, request witness
                         Some(w) => {
                             // this request covers all blamed headers:
                             // [w - w.blame, w - w.blame + 1, ..., w]
-                            debug!("!!!! requesting witness {}", w);
+                            debug!("Requesting witness at height {}", w);
                             witnesses.request(std::iter::once(w));
                         }
                     }
 
-                    debug!("!!!! latest verifiable set to {}", height);
                     *witnesses.latest_verified_header.write() = height;
                 }
             })
-            .expect("Starting the Blame Verification Worker should succeed");
+            .expect("Starting the Witness Worker should succeed");
     }
 
     #[inline]

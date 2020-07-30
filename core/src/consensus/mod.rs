@@ -171,7 +171,7 @@ pub struct ConsensusGraph {
     pub synced_epoch_id: Mutex<Option<EpochId>>,
     pub config: ConsensusConfig,
 
-    /// Whether this instance is an archive or full node.
+    /// The type of this node: Archive, Full, or Light.
     node_type: NodeType,
 }
 
@@ -1391,9 +1391,7 @@ impl ConsensusGraphTrait for ConsensusGraph {
     ) -> Result<H256, String> {
         self.get_height_from_epoch_number(epoch_number)
             .and_then(|height| {
-                self.inner
-                    .read_recursive()
-                    .get_pivot_hash_from_epoch_number(height)
+                self.inner.read().get_pivot_hash_from_epoch_number(height)
             })
     }
 
@@ -1501,10 +1499,6 @@ impl ConsensusGraphTrait for ConsensusGraph {
     /// Return the epoch that we are going to sync the state
     fn get_to_sync_epoch_id(&self) -> EpochId {
         self.inner.read().get_to_sync_epoch_id()
-    }
-
-    fn lock_inner(&self) -> parking_lot::RwLockReadGuard<ConsensusGraphInner> {
-        return self.inner.read();
     }
 
     /// Find a trusted blame block for checkpoint
