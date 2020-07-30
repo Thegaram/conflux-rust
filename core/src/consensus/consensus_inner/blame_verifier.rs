@@ -25,7 +25,7 @@ pub struct BlameVerifier {
     // We use Mutex to allow for interior mutability.
     last_epoch_received: Mutex<u64>,
 
-    /// Next epoch we expect to receive.
+    /// Next epoch we plan to process.
     // We use Mutex to allow for interior mutability.
     next_epoch_to_process: Mutex<u64>,
 }
@@ -48,7 +48,7 @@ impl BlameVerifier {
 
     fn header_from_height(
         &self, inner: &ConsensusGraphInner, height: u64,
-    ) -> BlockHeader {
+    ) -> Option<BlockHeader> {
         let pivot_index = inner.height_to_pivot_index(height);
         let pivot_arena_index = inner.pivot_chain[pivot_index];
         let pivot_hash = inner.arena[pivot_arena_index].hash;
@@ -56,7 +56,6 @@ impl BlameVerifier {
         self.data_man
             .block_header_by_hash(&pivot_hash)
             .map(|h| (*h).clone())
-            .expect("header exists") // TODO
     }
 
     fn first_trusted_header_starting_from(
@@ -70,9 +69,9 @@ impl BlameVerifier {
             h => inner.height_to_pivot_index(h),
         };
 
-        let trusted =
-            inner.find_first_trusted_starting_from(pivot_index, blame_bound);
-        trusted.map(|index| inner.pivot_index_to_height(index))
+        inner
+            .find_first_trusted_starting_from(pivot_index, blame_bound)
+            .map(|index| inner.pivot_index_to_height(index))
     }
 
     /// Check the blame corresponding to `epoch` and send the verification
@@ -96,7 +95,6 @@ impl BlameVerifier {
             epoch, *last_epoch_received, *next_epoch_to_process
         );
 
-        // TODO: handle chain reorg + skipping
         match epoch {
             // special case
             e if e == 0 => {
@@ -152,7 +150,7 @@ impl BlameVerifier {
                 assert!(false);
             }
 
-            // epoch already handled through witnesss
+            // epoch already handled through witness
             //
             //                 blames
             //              ............
@@ -164,6 +162,7 @@ impl BlameVerifier {
             // we receive B and proceed to request all blamed headers (B, C);
             // set last-epoch-received to B and next-epoch-to-process to D;
             // we will skip C in the next iteation (it is covered already).
+
             e if e < *next_epoch_to_process => {
                 debug!("Epoch already covered, skipping (e = {}, next_epoch_to_process = {})", e, *next_epoch_to_process);
                 *last_epoch_received = e;
@@ -180,7 +179,7 @@ impl BlameVerifier {
             // at each step, the epoch we receive (e) will be the same as the
             // next-epoch-to-process (nep)
             //
-            //                         V
+            //                         e
             //  ---        ---        ---        ---
             // |   | <--- |   | <--- |   | <--- |   | <--- ...
             //  ---        ---        ---        ---
@@ -196,9 +195,9 @@ impl BlameVerifier {
         // convert epoch number into pivot height
         let height = epoch + DEFERRED_STATE_EPOCH_COUNT;
 
+        // check blame
         debug!("Finding witness for header at height {} (epoch {})...", height, epoch);
 
-        // check blame
         match self.first_trusted_header_starting_from(
             inner,
             height,
@@ -231,9 +230,12 @@ impl BlameVerifier {
             Some(w) if w == height => {
                 trace!("Epoch {} (height {}) is NOT blamed", epoch, height);
 
-                let header = self.header_from_height(inner, height);
+                let header = self
+                    .header_from_height(inner, height)
+                    .expect("Pivot header exists");
 
-                // normal case: blaming block have been covered previously, so this block must be non-blaming
+                // normal case: blaming block have been covered previously,
+                // so this block must be non-blaming
                 if header.blame() == 0 {
                     // send non-blaming header
                     self.blame_sender.send((height, None));
