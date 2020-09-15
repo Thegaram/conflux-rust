@@ -57,13 +57,7 @@ use throttling::token_bucket::TokenBucketManager;
 
 const SYNC_TIMER: TimerToken = 0;
 const REQUEST_CLEANUP_TIMER: TimerToken = 1;
-
-#[derive(Debug)]
-struct Statistics {
-    catch_up_mode: bool,
-    latest_epoch: u64,
-    latest_verified: u64,
-}
+const LOG_STATISTICS_TIMER: TimerToken = 2;
 
 /// Handler is responsible for maintaining peer meta-information and
 /// dispatching messages to the query and sync sub-handlers.
@@ -437,12 +431,13 @@ impl Handler {
     }
 
     #[inline]
-    fn get_statistics(&self) -> Statistics {
-        Statistics {
-            catch_up_mode: self.catch_up_mode(),
-            latest_epoch: self.consensus.best_epoch_number(),
-            latest_verified: self.witnesses.latest_verified(),
-        }
+    fn print_stats(&self) {
+        info!(
+            "Catch-up mode: {}, latest epoch: {}, latest verified: {}",
+            self.catch_up_mode(),
+            self.consensus.best_epoch_number(),
+            self.witnesses.latest_verified()
+        );
     }
 
     #[inline]
@@ -504,7 +499,7 @@ impl Handler {
     fn on_status_v2(
         &self, io: &dyn NetworkContext, peer: &NodeId, status: StatusPongV2,
     ) -> Result<()> {
-        info!("on_status peer={:?} status={:?}", peer, status);
+        debug!("on_status (v2) peer={:?} status={:?}", peer, status);
 
         self.validate_peer_type(status.node_type)?;
         self.validate_genesis_hash(status.genesis_hash)?;
@@ -532,7 +527,7 @@ impl Handler {
         status: StatusPongDeprecatedV1,
     ) -> Result<()>
     {
-        info!("on_status peer={:?} status={:?}", peer, status);
+        debug!("on_status (v1) peer={:?} status={:?}", peer, status);
 
         self.on_status_v2(
             io,
@@ -743,8 +738,6 @@ impl Handler {
     }
 
     fn start_sync(&self, io: &dyn NetworkContext) {
-        info!("general sync statistics: {:?}", self.get_statistics());
-
         match self.catch_up_mode() {
             true => {
                 self.headers.sync(io);
@@ -768,18 +761,20 @@ impl Handler {
     }
 
     fn clean_up_requests(&self) {
-        trace!("clean_up_requests");
-        self.block_txs.clean_up();
-        self.blooms.clean_up();
-        self.epochs.clean_up();
-        self.headers.clean_up();
-        self.receipts.clean_up();
-        self.state_entries.clean_up();
-        self.state_roots.clean_up();
-        self.storage_roots.clean_up();
-        self.tx_infos.clean_up();
-        self.txs.clean_up();
-        self.witnesses.clean_up();
+        info!( // TODO
+            "cleaned up timeout requests: {} {} {} {} {} {} {} {} {} {} {}",
+            self.block_txs.clean_up(),
+            self.blooms.clean_up(),
+            self.epochs.clean_up(),
+            self.headers.clean_up(),
+            self.receipts.clean_up(),
+            self.state_entries.clean_up(),
+            self.state_roots.clean_up(),
+            self.storage_roots.clean_up(),
+            self.tx_infos.clean_up(),
+            self.txs.clean_up(),
+            self.witnesses.clean_up(),
+        );
     }
 
     fn on_throttled(
@@ -849,6 +844,9 @@ impl NetworkProtocolHandler for Handler {
 
         io.register_timer(REQUEST_CLEANUP_TIMER, *CLEANUP_PERIOD)
             .expect("Error registering request cleanup timer");
+
+        io.register_timer(LOG_STATISTICS_TIMER, Duration::from_secs(1))
+            .expect("Error registering log statistics timer");
     }
 
     fn on_message(&self, io: &dyn NetworkContext, peer: &NodeId, raw: &[u8]) {
@@ -866,7 +864,7 @@ impl NetworkProtocolHandler for Handler {
             }
         };
 
-        debug!("on_message: peer={:?}, msgid={:?}", peer, msg_id);
+        trace!("on_message: peer={:?}, msgid={:?}", peer, msg_id);
 
         if let Err(e) = self.dispatch_message(io, peer, msg_id.into(), rlp) {
             handle_error(io, peer, msg_id.into(), &e);
@@ -918,6 +916,20 @@ impl NetworkProtocolHandler for Handler {
         match timer {
             SYNC_TIMER => self.start_sync(io),
             REQUEST_CLEANUP_TIMER => self.clean_up_requests(),
+            LOG_STATISTICS_TIMER => {
+                self.print_stats();
+                self.block_txs.print_stats();
+                self.blooms.print_stats();
+                self.epochs.print_stats();
+                self.headers.print_stats();
+                self.receipts.print_stats();
+                self.state_entries.print_stats();
+                self.state_roots.print_stats();
+                self.storage_roots.print_stats();
+                self.tx_infos.print_stats();
+                self.txs.print_stats();
+                self.witnesses.print_stats();
+            }
             // TODO(thegaram): add other timers (e.g. data_man gc)
             _ => warn!("Unknown timer {} triggered.", timer),
         }

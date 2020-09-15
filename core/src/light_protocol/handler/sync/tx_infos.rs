@@ -29,7 +29,7 @@ use cfx_types::{H256, U256};
 use futures::future::FutureExt;
 use lru_time_cache::LruCache;
 use network::{node_table::NodeId, NetworkContext};
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use primitives::{Receipt, SignedTransaction, TransactionIndex};
 use std::{future::Future, sync::Arc};
 
@@ -55,6 +55,9 @@ pub struct TxInfos {
     // series of unique request ids
     request_id_allocator: Arc<UniqueId>,
 
+    // mutex used to make sure at most one thread drives sync at any given time
+    syn: Mutex<()>,
+
     // sync and request manager
     sync_manager: SyncManager<H256, MissingTxInfo>,
 
@@ -72,6 +75,7 @@ impl TxInfos {
     ) -> Self
     {
         let ledger = LedgerInfo::new(consensus.clone());
+        let syn = Mutex::new(());
         let sync_manager = SyncManager::new(peers.clone(), msgid::GET_TX_INFOS);
 
         let cache = LruCache::with_expiry_duration(*CACHE_TIMEOUT);
@@ -80,6 +84,7 @@ impl TxInfos {
         TxInfos {
             ledger,
             request_id_allocator,
+            syn,
             sync_manager,
             verified,
             witnesses,
@@ -87,12 +92,15 @@ impl TxInfos {
     }
 
     #[inline]
-    fn get_statistics(&self) -> Statistics {
-        Statistics {
-            cached: self.verified.read().len(),
-            in_flight: self.sync_manager.num_in_flight(),
-            waiting: self.sync_manager.num_waiting(),
-        }
+    pub fn print_stats(&self) {
+        debug!(
+            "tx info sync statistics: {:?}",
+            Statistics {
+                cached: self.verified.read().len(),
+                in_flight: self.sync_manager.num_in_flight(),
+                waiting: self.sync_manager.num_waiting(),
+            }
+        );
     }
 
     #[inline]
@@ -360,23 +368,36 @@ impl TxInfos {
     }
 
     #[inline]
-    pub fn clean_up(&self) {
+    pub fn clean_up(&self) -> usize {
+        // remove timeout in-flight requests
         let timeout = *TX_INFO_REQUEST_TIMEOUT;
         let infos = self.sync_manager.remove_timeout_requests(timeout);
+        let num_timeout = infos.len();
         self.sync_manager.insert_waiting(infos.into_iter());
+
+        // trigger cache cleanup
+        self.verified.write().get(&Default::default());
+
+        num_timeout
     }
 
     #[inline]
     fn send_request(
         &self, io: &dyn NetworkContext, peer: &NodeId, hashes: Vec<H256>,
     ) -> Result<Option<RequestId>> {
-        debug!("send_request peer={:?} hashes={:?}", peer, hashes);
-
         if hashes.is_empty() {
             return Ok(None);
         }
 
         let request_id = self.request_id_allocator.next();
+
+        trace!(
+            "send_request GetTxInfos peer={:?} id={:?} hashes={:?}",
+            peer,
+            request_id,
+            hashes
+        );
+
         let msg: Box<dyn Message> = Box::new(GetTxInfos { request_id, hashes });
 
         msg.send(io, peer)?;
@@ -385,7 +406,10 @@ impl TxInfos {
 
     #[inline]
     pub fn sync(&self, io: &dyn NetworkContext) {
-        debug!("tx info sync statistics: {:?}", self.get_statistics());
+        let _guard = match self.syn.try_lock() {
+            None => return,
+            Some(g) => g,
+        };
 
         self.sync_manager.sync(
             MAX_TX_INFOS_IN_FLIGHT,
