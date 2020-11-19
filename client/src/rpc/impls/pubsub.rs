@@ -49,6 +49,7 @@ pub struct PubSubClient {
     heads_subscribers: Arc<RwLock<Subscribers<Client>>>,
     epochs_subscribers: Arc<RwLock<Subscribers<Client>>>,
     logs_subscribers: Arc<RwLock<Subscribers<(Client, Filter)>>>,
+    mined_subscribers: Arc<RwLock<Subscribers<Client>>>,
     epochs_ordered: Arc<Channel<(u64, Vec<H256>)>>,
 }
 
@@ -62,6 +63,7 @@ impl PubSubClient {
         let heads_subscribers = Arc::new(RwLock::new(Subscribers::default()));
         let epochs_subscribers = Arc::new(RwLock::new(Subscribers::default()));
         let logs_subscribers = Arc::new(RwLock::new(Subscribers::default()));
+        let mined_subscribers = Arc::new(RwLock::new(Subscribers::default()));
 
         let handler = Arc::new(ChainNotificationHandler {
             executor,
@@ -70,6 +72,7 @@ impl PubSubClient {
             heads_subscribers: heads_subscribers.clone(),
             epochs_subscribers: epochs_subscribers.clone(),
             logs_subscribers: logs_subscribers.clone(),
+            mined_subscribers: mined_subscribers.clone(),
         });
 
         // --------- newHeads ---------
@@ -86,11 +89,26 @@ impl PubSubClient {
         // run futures@0.3 future on tokio@0.1 executor
         handler.executor.spawn(fut.unit_error().boxed().compat());
 
+        // --------- blocksMined ---------
+        // subscribe to the `blocks_mined` channel
+        let receiver = notifications.blocks_mined.subscribe();
+
+        // loop asynchronously
+        let handler_clone = handler.clone();
+
+        let fut = receiver.for_each(move |header| {
+            handler_clone.notify_block_mined(&header);
+        });
+
+        // run futures@0.3 future on tokio@0.1 executor
+        handler.executor.spawn(fut.unit_error().boxed().compat());
+
         PubSubClient {
             handler,
             heads_subscribers,
             epochs_subscribers,
             logs_subscribers,
+            mined_subscribers,
             epochs_ordered: notifications.epochs_ordered.clone(),
         }
     }
@@ -198,6 +216,7 @@ pub struct ChainNotificationHandler {
     heads_subscribers: Arc<RwLock<Subscribers<Client>>>,
     epochs_subscribers: Arc<RwLock<Subscribers<Client>>>,
     logs_subscribers: Arc<RwLock<Subscribers<(Client, Filter)>>>,
+    mined_subscribers: Arc<RwLock<Subscribers<Client>>>,
 }
 
 impl ChainNotificationHandler {
@@ -237,6 +256,28 @@ impl ChainNotificationHandler {
             Some(h) => RpcHeader::new(&*h, self.consensus.clone()),
             None => return warn!("Unable to retrieve header for {:?}", hash),
         };
+
+        for subscriber in subscribers.values() {
+            Self::notify(
+                &self.executor,
+                subscriber,
+                pubsub::Result::Header(header.clone()),
+            );
+        }
+    }
+
+    // TODO
+    fn notify_block_mined(&self, header: &BlockHeader) {
+        trace!("notify_block_mined({:?})", header);
+
+        let subscribers = self.mined_subscribers.read();
+
+        // do not retrieve anything unnecessarily
+        if subscribers.is_empty() {
+            return;
+        }
+
+        let header = RpcHeader::new(header, self.consensus.clone());
 
         for subscriber in subscribers.values() {
             Self::notify(
@@ -446,6 +487,11 @@ impl PubSub for PubSubClient {
                 "logs",
                 "Expected filter parameter.",
             ),
+            // --------- blocksMined ---------
+            (pubsub::Kind::BlocksMined, None) => {
+                let id = self.mined_subscribers.write().push(subscriber);
+                return;
+            }
             _ => error_codes::unimplemented(None),
         };
 
@@ -458,7 +504,8 @@ impl PubSub for PubSubClient {
         let res0 = self.heads_subscribers.write().remove(&id).is_some();
         let res1 = self.epochs_subscribers.write().remove(&id).is_some();
         let res2 = self.logs_subscribers.write().remove(&id).is_some();
+        let res3 = self.mined_subscribers.write().remove(&id).is_some();
 
-        Ok(res0 || res1 || res2)
+        Ok(res0 || res1 || res2 || res3)
     }
 }

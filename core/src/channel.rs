@@ -5,6 +5,7 @@
 use crate::UniqueId;
 use cfx_types::H256;
 use parking_lot::RwLock;
+use primitives::BlockHeader;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tokio::{runtime, sync::mpsc, time::timeout};
 
@@ -113,6 +114,7 @@ pub struct Notifications {
     pub new_block_hashes: Arc<Channel<(H256, bool)>>,
     pub epochs_ordered: Arc<Channel<(u64, Vec<H256>)>>,
     pub blame_verification_results: Arc<Channel<(u64, Option<u64>)>>, /* <height, witness> */
+    pub blocks_mined: Arc<Channel<BlockHeader>>,
 }
 
 impl Notifications {
@@ -123,6 +125,7 @@ impl Notifications {
             blame_verification_results: Arc::new(Channel::new(
                 "blame-verification-results",
             )),
+            blocks_mined: Arc::new(Channel::new("blocks-mined")),
         })
     }
 }

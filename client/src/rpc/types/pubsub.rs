@@ -68,6 +68,8 @@ pub enum Kind {
     Syncing,
     /// Epoch
     Epochs,
+    // TODO
+    BlocksMined,
 }
 
 /// Subscription kind.

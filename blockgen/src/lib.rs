@@ -10,9 +10,10 @@ use crate::miner::{
 use cfx_parameters::consensus::GENESIS_GAS_LIMIT;
 use cfx_types::{Address, H256, U256};
 use cfxcore::{
-    block_parameters::*, consensus::consensus_inner::StateBlameInfo, pow::*,
+    block_parameters::*, channel::Channel,
+    consensus::consensus_inner::StateBlameInfo, pow::*,
     verification::compute_transaction_root, ConsensusGraph,
-    ConsensusGraphTrait, SharedSynchronizationGraph,
+    ConsensusGraphTrait, Notifications, SharedSynchronizationGraph,
     SharedSynchronizationService, SharedTransactionPool, Stopable,
 };
 use lazy_static::lazy_static;
@@ -60,6 +61,10 @@ pub struct BlockGenerator {
     state: RwLock<MiningState>,
     workers: Mutex<Vec<(Worker, mpsc::Sender<ProofOfWorkProblem>)>>,
     pub stratum: RwLock<Option<Stratum>>,
+
+    /// Channel used to send epochs to PubSub
+    /// Each element is <epoch_number, epoch_hashes>
+    blocks_mined_sender: Arc<Channel<BlockHeader>>,
 }
 
 pub struct Worker {
@@ -144,9 +149,11 @@ impl BlockGenerator {
         sync: SharedSynchronizationService,
         maybe_txgen: Option<SharedTransactionGenerator>,
         pow_config: ProofOfWorkConfig, pow: Arc<PowComputer>,
-        mining_author: Address,
+        mining_author: Address, notifications: Arc<Notifications>,
     ) -> Self
     {
+        let blocks_mined_sender = notifications.blocks_mined.clone();
+
         BlockGenerator {
             pow_config,
             pow,
@@ -158,6 +165,7 @@ impl BlockGenerator {
             state: RwLock::new(MiningState::Start),
             workers: Mutex::new(Vec::new()),
             stratum: RwLock::new(None),
+            blocks_mined_sender,
         }
     }
 
@@ -400,8 +408,13 @@ impl BlockGenerator {
 
     /// Update and sync a new block
     pub fn on_mined_block(&self, block: Block) {
+        let header = block.block_header.clone();
+
         // FIXME: error handling.
         self.sync.on_mined_block(block).ok();
+
+        // TODO: send
+        self.blocks_mined_sender.send(header);
     }
 
     /// Check if we need to mine on a new block

@@ -347,7 +347,7 @@ pub fn initialize_not_light_node_modules(
         network,
         common_impl,
         accounts,
-        _notifications,
+        notifications,
         pubsub,
         runtime,
     ) = initialize_common_modules(&conf, exit.clone(), node_type)?;
@@ -441,6 +441,7 @@ pub fn initialize_not_light_node_modules(
         conf.pow_config(),
         pow.clone(),
         maybe_author.clone().unwrap_or_default(),
+        notifications,
     ));
     if conf.is_dev_mode() {
         let bg = blockgen.clone();
