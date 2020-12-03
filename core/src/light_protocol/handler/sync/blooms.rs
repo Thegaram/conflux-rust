@@ -62,7 +62,7 @@ impl Blooms {
         witnesses: Arc<Witnesses>,
     ) -> Self
     {
-        let sync_manager = SyncManager::new(peers.clone(), msgid::GET_BLOOMS);
+        let sync_manager = SyncManager::new(peers, msgid::GET_BLOOMS);
 
         let cache = LruCache::with_expiry_duration(*CACHE_TIMEOUT);
         let verified = Arc::new(RwLock::new(cache));

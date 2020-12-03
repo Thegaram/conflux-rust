@@ -63,7 +63,7 @@ impl StateRoots {
     ) -> Self
     {
         let sync_manager =
-            SyncManager::new(peers.clone(), msgid::GET_STATE_ROOTS);
+            SyncManager::new(peers, msgid::GET_STATE_ROOTS);
 
         let cache = LruCache::with_expiry_duration(*CACHE_TIMEOUT);
         let verified = Arc::new(RwLock::new(cache));

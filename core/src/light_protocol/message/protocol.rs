@@ -13,6 +13,7 @@ use primitives::{
     BlockHeader, BlockReceipts, Receipt, SignedTransaction, StateRoot,
     StorageRoot,
 };
+use crate::executive::ExecutionOutcome;
 
 #[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable)]
 pub struct StatusPingDeprecatedV1 {
@@ -313,4 +314,60 @@ pub struct StorageRootWithKey {
 pub struct StorageRoots {
     pub request_id: RequestId,
     pub roots: Vec<StorageRootWithKey>,
+}
+
+#[derive(
+    Clone,
+    Debug,
+    //Default,
+    PartialEq,
+    Eq,
+    //PartialOrd,
+    //Ord,
+    Hash,
+    RlpEncodable,
+    RlpDecodable,
+)]
+pub struct CallKey {
+    pub tx: SignedTransaction,
+    pub epoch: u64,
+}
+
+impl Ord for CallKey {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering { self.tx.hash().cmp(&other.tx.hash()).then(self.epoch.cmp(&other.epoch)) }
+}
+
+impl PartialOrd for CallKey {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable)]
+pub struct CallTransactions {
+    pub request_id: RequestId,
+    pub keys: Vec<CallKey>,
+}
+
+#[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable)]
+pub struct CallResultProof {
+    pub state_proof: StateProof,
+
+    // state root is validated against witness info retrieved previously;
+    // no additional proof needed
+    pub state_root: StateRoot,
+    pub prev_snapshot_state_root: Option<StateRoot>,
+}
+
+#[derive(Debug, RlpEncodable, RlpDecodable)] // TODO: Clone?
+pub struct CallResultWithKey {
+    pub key: CallKey,
+    pub result: ExecutionOutcome,
+    pub proof: CallResultProof,
+}
+
+#[derive(Debug, Default, RlpEncodable, RlpDecodable)]
+pub struct CallResults {
+    pub request_id: RequestId,
+    pub results: Vec<CallResultWithKey>,
 }

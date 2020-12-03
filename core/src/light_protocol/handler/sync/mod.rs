@@ -14,6 +14,7 @@ mod storage_roots;
 mod tx_infos;
 mod txs;
 mod witnesses;
+mod calls;
 
 pub use block_txs::BlockTxs;
 pub use blooms::Blooms;

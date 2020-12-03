@@ -16,5 +16,5 @@ pub use protocol::{
     StateRootWithEpoch, StateRoots, StatusPingDeprecatedV1, StatusPingV2,
     StatusPongDeprecatedV1, StatusPongV2, StorageRootKey, StorageRootProof,
     StorageRootWithKey, StorageRoots, TxInfo, TxInfos, Txs, WitnessInfo,
-    WitnessInfoWithHeight,
+    WitnessInfoWithHeight, CallKey, CallTransactions, CallResultProof, CallResultWithKey, CallResults,
 };

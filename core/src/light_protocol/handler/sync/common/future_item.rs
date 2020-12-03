@@ -55,7 +55,7 @@ impl<Item, Err> PendingItem<Item, Err> {
                 // if we managed to verify the item, we do not care about the
                 // error anymore. wakers must have been notified when `self` was
                 // set to `Error`, so they either received an error or haven't
-                // polled yet.
+                // been polled yet.
                 *self = Self::Ready(item);
             }
         }

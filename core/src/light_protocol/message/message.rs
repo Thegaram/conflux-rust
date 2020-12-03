@@ -39,6 +39,8 @@ build_msgid! {
     STATUS_PONG_V2 = 0x19
     GET_STORAGE_ROOTS = 0x1a
     STORAGE_ROOTS = 0x1b
+    CALL_TRANSACTIONS = 0x1c
+    CALL_RESULTS = 0x1d
 
     THROTTLED = 0xfe
     INVALID = 0xff
@@ -73,3 +75,5 @@ build_msg_impl! { GetTxInfos, msgid::GET_TX_INFOS, "GetTxInfos", LIGHT_PROTO_V1,
 build_msg_impl! { TxInfos, msgid::TX_INFOS, "TxInfos", LIGHT_PROTO_V1, LIGHT_PROTO_V2 }
 build_msg_impl! { GetStorageRoots, msgid::GET_STORAGE_ROOTS, "GetStorageRoots", LIGHT_PROTO_V2, LIGHT_PROTO_V2 }
 build_msg_impl! { StorageRoots, msgid::STORAGE_ROOTS, "StorageRoots", LIGHT_PROTO_V2, LIGHT_PROTO_V2 }
+build_msg_impl! { CallTransactions, msgid::CALL_TRANSACTIONS, "CallTransactions", LIGHT_PROTO_V2, LIGHT_PROTO_V2 } // TODO: V3
+build_msg_impl! { CallResults, msgid::CALL_RESULTS, "CallResults", LIGHT_PROTO_V2, LIGHT_PROTO_V2 } // TODO: V3

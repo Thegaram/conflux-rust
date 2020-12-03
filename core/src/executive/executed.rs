@@ -6,8 +6,10 @@ use crate::{bytes::Bytes, vm};
 use cfx_types::{Address, U256, U512};
 use primitives::{receipt::StorageChange, LogEntry, TransactionWithSignature};
 use solidity_abi::{ABIDecodable, ABIDecodeError};
+use rlp_derive::{RlpDecodable, RlpEncodable};
+use rlp::{Encodable, Decodable, Rlp, RlpStream, DecoderError};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Clone, Debug, PartialEq, RlpEncodable, RlpDecodable)]
 pub struct Executed {
     /// Gas used during execution of transaction.
     pub gas_used: U256,
@@ -46,7 +48,7 @@ pub struct Executed {
     pub trace: Vec<ExecTrace>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ToRepackError {
     /// Returned when transaction nonce does not match state nonce.
     InvalidNonce {
@@ -82,7 +84,19 @@ pub enum ToRepackError {
     SenderDoesNotExist,
 }
 
-#[derive(Debug)]
+impl Encodable for ToRepackError {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        unimplemented!()
+    }
+}
+
+impl Decodable for ToRepackError {
+    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
+        unimplemented!()
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum TxDropError {
     /// The account nonce in world-state is larger than tx nonce
     OldNonce(U256, U256),
@@ -91,6 +105,18 @@ pub enum TxDropError {
     /// Although it can be verified in tx packing,
     /// by spec doc, it is checked in execution.
     InvalidRecipientAddress(Address),
+}
+
+impl Encodable for TxDropError {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        unimplemented!()
+    }
+}
+
+impl Decodable for TxDropError {
+    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
+        unimplemented!()
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -112,12 +138,42 @@ pub enum ExecutionError {
     VmError(vm::Error),
 }
 
-#[derive(Debug)]
+impl Encodable for ExecutionError {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        unimplemented!()
+    }
+}
+
+impl Decodable for ExecutionError {
+    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
+        unimplemented!()
+    }
+}
+
+#[derive(Debug)] // TODO: Clone?
 pub enum ExecutionOutcome {
     NotExecutedDrop(TxDropError),
     NotExecutedToReconsiderPacking(ToRepackError),
     ExecutionErrorBumpNonce(ExecutionError, Executed),
     Finished(Executed),
+}
+
+impl Clone for ExecutionOutcome {
+    fn clone(&self) -> Self {
+        unimplemented!()
+    }
+}
+
+impl Encodable for ExecutionOutcome {
+    fn rlp_append(&self, s: &mut RlpStream) {
+        unimplemented!()
+    }
+}
+
+impl Decodable for ExecutionOutcome {
+    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
+        unimplemented!()
+    }
 }
 
 impl ExecutionOutcome {

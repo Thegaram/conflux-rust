@@ -171,6 +171,7 @@ pub use self::{
             snapshot_db_manager_sqlite::SnapshotDbManagerSqlite,
             sqlite::SqliteConnection,
         },
+        recording_state::RecordingState,
     },
     state::{State as StorageState, StateTrait as StorageStateTrait},
     state_manager::{

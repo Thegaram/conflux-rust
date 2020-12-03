@@ -76,8 +76,8 @@ impl TxInfos {
         request_id_allocator: Arc<UniqueId>, witnesses: Arc<Witnesses>,
     ) -> Self
     {
-        let ledger = LedgerInfo::new(consensus.clone());
-        let sync_manager = SyncManager::new(peers.clone(), msgid::GET_TX_INFOS);
+        let ledger = LedgerInfo::new(consensus);
+        let sync_manager = SyncManager::new(peers, msgid::GET_TX_INFOS);
 
         let cache = LruCache::with_expiry_duration(*CACHE_TIMEOUT);
         let verified = Arc::new(RwLock::new(cache));

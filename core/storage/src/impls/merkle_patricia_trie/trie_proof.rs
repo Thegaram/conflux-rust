@@ -111,6 +111,16 @@ impl TrieProof {
         })
     }
 
+    // TODO: do in place?
+    pub fn merge(self, other: TrieProof) -> Result<TrieProof> {
+        let TrieProof { mut nodes, .. } = self;
+        let TrieProof {
+            nodes: other_nodes, ..
+        } = other;
+        nodes.extend(other_nodes.into_iter());
+        TrieProof::new(nodes)
+    }
+
     pub fn get_merkle_root(&self) -> &MerkleHash {
         match self.nodes.get(0) {
             None => &MERKLE_NULL_NODE,

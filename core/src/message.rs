@@ -54,8 +54,7 @@ pub trait MessageProtocolVersionBound {
     fn version_valid_till(&self) -> ProtocolVersion;
 }
 
-pub trait Message:
-    Send + Sync + GetMaybeRequestId + MessageProtocolVersionBound + Encodable
+pub trait Message: GetMaybeRequestId + MessageProtocolVersionBound + Encodable
 {
     // If true, message may be throttled when sent to remote peer.
     fn is_size_sensitive(&self) -> bool { false }

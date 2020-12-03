@@ -13,6 +13,8 @@ pub(super) mod state_manager;
 pub(super) mod state_proof;
 pub(super) mod storage_db;
 pub(super) mod storage_manager;
+pub(super) mod recording_state;
+pub(super) mod proving_state;
 
 pub mod defaults {
     pub use super::delta_mpt::DEFAULT_NODE_MAP_SIZE;
