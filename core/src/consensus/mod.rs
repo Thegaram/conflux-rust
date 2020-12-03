@@ -44,7 +44,7 @@ use cfx_parameters::{
     },
 };
 use cfx_statedb::StateDb;
-use cfx_storage::state_manager::StateManagerTrait;
+use cfx_storage::{state_manager::StateManagerTrait, StateProof};
 use cfx_types::{Bloom, H160, H256, U256};
 use either::Either;
 use itertools::Itertools;
@@ -985,6 +985,21 @@ impl ConsensusGraph {
             bail!("cannot get block hashes in the specified epoch, maybe it does not exist?");
         };
         self.executor.call_virtual(tx, &epoch_id, epoch_size)
+    }
+
+    pub fn call_virtual_with_proof(
+        &self, tx: &SignedTransaction, epoch: EpochNumber,
+    ) -> RpcResult<(ExecutionOutcome, StateProof)> {
+        // only allow to call against stated epoch
+        self.validate_stated_epoch(&epoch)?;
+        let (epoch_id, epoch_size) = if let Ok(v) =
+            self.get_block_hashes_by_epoch(epoch)
+        {
+            (v.last().expect("pivot block always exist").clone(), v.len())
+        } else {
+            bail!("cannot get block hashes in the specified epoch, maybe it does not exist?");
+        };
+        self.executor.call_virtual_with_proof(tx, &epoch_id, epoch_size)
     }
 
     /// Get the number of processed blocks (i.e., the number of calls to

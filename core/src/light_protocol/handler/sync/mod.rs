@@ -27,3 +27,4 @@ pub use storage_roots::StorageRoots;
 pub use tx_infos::{TxInfoValidated, TxInfos};
 pub use txs::Txs;
 pub use witnesses::Witnesses;
+pub use calls::Calls;

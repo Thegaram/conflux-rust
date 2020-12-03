@@ -13,7 +13,7 @@ use primitives::{
     BlockHeader, BlockReceipts, Receipt, SignedTransaction, StateRoot,
     StorageRoot,
 };
-use crate::executive::ExecutionOutcome;
+// use crate::executive::ExecutionOutcome;
 
 #[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable)]
 pub struct StatusPingDeprecatedV1 {
@@ -351,7 +351,7 @@ pub struct CallTransactions {
 
 #[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable)]
 pub struct CallResultProof {
-    pub state_proof: StateProof,
+    pub execution_proof: StateProof,
 
     // state root is validated against witness info retrieved previously;
     // no additional proof needed
@@ -362,7 +362,7 @@ pub struct CallResultProof {
 #[derive(Debug, RlpEncodable, RlpDecodable)] // TODO: Clone?
 pub struct CallResultWithKey {
     pub key: CallKey,
-    pub result: ExecutionOutcome,
+    // pub result: ExecutionOutcome,
     pub proof: CallResultProof,
 }
 

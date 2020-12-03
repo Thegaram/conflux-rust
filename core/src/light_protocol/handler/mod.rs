@@ -21,7 +21,7 @@ use crate::{
             StatusPingV2, StatusPongDeprecatedV1, StatusPongV2,
             StorageRoots as GetStorageRootsResponse,
             TxInfos as GetTxInfosResponse, Txs as GetTxsResponse,
-            WitnessInfo as GetWitnessInfoResponse,
+            WitnessInfo as GetWitnessInfoResponse, CallTransactions, CallResults as CallTransactionsResponse,
         },
         LightNodeConfiguration, LIGHT_PROTOCOL_OLD_VERSIONS_TO_SUPPORT,
         LIGHT_PROTOCOL_VERSION, LIGHT_PROTO_V1,
@@ -52,7 +52,7 @@ use std::{
 };
 use sync::{
     BlockTxs, Blooms, Epochs, HashSource, Headers, Receipts, StateEntries,
-    StateRoots, StorageRoots, TxInfos, Txs, Witnesses,
+    StateRoots, StorageRoots, TxInfos, Txs, Witnesses, Calls,
 };
 use throttling::token_bucket::TokenBucketManager;
 
@@ -72,6 +72,9 @@ pub struct Handler {
 
     // bloom sync manager
     pub blooms: Blooms,
+
+    // calls sync manager
+    pub calls: Calls,
 
     // shared consensus graph
     consensus: SharedConsensusGraph,
@@ -169,6 +172,13 @@ impl Handler {
             witnesses.clone(),
         ));
 
+        let calls = Calls::new(
+            peers.clone(),
+            state_roots.clone(),
+            request_id_allocator.clone(),
+            witnesses.clone(),
+        );
+
         let state_entries = StateEntries::new(
             peers.clone(),
             state_roots.clone(),
@@ -212,6 +222,7 @@ impl Handler {
         Handler {
             block_txs,
             blooms,
+            calls,
             consensus,
             epochs,
             headers,
@@ -393,13 +404,14 @@ impl Handler {
             msgid::BLOCK_HEADERS => self.on_block_headers(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::BLOCK_TXS => self.on_block_txs(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::BLOOMS => self.on_blooms(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::CALL_RESULTS => self.on_call_results(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::NEW_BLOCK_HASHES => self.on_new_block_hashes(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::RECEIPTS => self.on_receipts(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::STATE_ENTRIES => self.on_state_entries(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::STATE_ROOTS => self.on_state_roots(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::STORAGE_ROOTS => self.on_storage_roots(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
-            msgid::TXS => self.on_txs(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::TX_INFOS => self.on_tx_infos(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::TXS => self.on_txs(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::WITNESS_INFO => self.on_witness_info(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
 
             // request was throttled by service provider
@@ -679,6 +691,22 @@ impl Handler {
         Ok(())
     }
 
+    fn on_call_results(
+        &self, io: &dyn NetworkContext, peer: &NodeId, resp: CallTransactionsResponse,
+    ) -> Result<()> {
+        debug!(
+            "received {} call results (request id = {})",
+            resp.results.len(),
+            resp.request_id
+        );
+        trace!("on_call_results resp={:?}", resp);
+
+        self.calls.receive(peer, resp.request_id, resp.results.into_iter())?;
+
+        self.calls.sync(io);
+        Ok(())
+    }
+
     fn on_new_block_hashes(
         &self, io: &dyn NetworkContext, peer: &NodeId, msg: NewBlockHashes,
     ) -> Result<()> {
@@ -862,6 +890,7 @@ impl Handler {
 
         self.witnesses.sync(io);
         self.blooms.sync(io);
+        self.calls.sync(io);
         self.receipts.sync(io);
         self.block_txs.sync(io);
         self.state_entries.sync(io);
@@ -874,6 +903,7 @@ impl Handler {
     fn clean_up_requests(&self) {
         self.block_txs.clean_up();
         self.blooms.clean_up();
+        self.calls.clean_up();
         self.epochs.clean_up();
         self.headers.clean_up();
         self.receipts.clean_up();
@@ -1034,6 +1064,7 @@ impl NetworkProtocolHandler for Handler {
                 self.print_stats();
                 self.block_txs.print_stats();
                 self.blooms.print_stats();
+                self.calls.print_stats();
                 self.epochs.print_stats();
                 self.headers.print_stats();
                 self.receipts.print_stats();

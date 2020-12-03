@@ -4,7 +4,7 @@
 
 use crate::{
     consensus::{
-        MaybeExecutedTxExtraInfo, SharedConsensusGraph, TransactionInfo,
+        MaybeExecutedTxExtraInfo, SharedConsensusGraph, TransactionInfo, ConsensusGraph,
     },
     light_protocol::{
         common::{
@@ -29,7 +29,7 @@ use crate::{
             StorageRootProof, StorageRootWithKey,
             StorageRoots as GetStorageRootsResponse, TxInfo,
             TxInfos as GetTxInfosResponse, Txs as GetTxsResponse,
-            WitnessInfo as GetWitnessInfoResponse,
+            WitnessInfo as GetWitnessInfoResponse, CallTransactions, CallResults as CallTransactionsResponse, CallKey, CallResultWithKey, CallResultProof,
         },
         LIGHT_PROTOCOL_ID, LIGHT_PROTOCOL_OLD_VERSIONS_TO_SUPPORT,
         LIGHT_PROTOCOL_VERSION, LIGHT_PROTO_V1,
@@ -179,20 +179,21 @@ impl Provider {
         let protocol = io.get_protocol();
 
         match msg_id {
-            msgid::STATUS_PING_DEPRECATED => self.on_status_deprecated(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
-            msgid::STATUS_PING_V2 => self.on_status_v2(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
-            msgid::GET_STATE_ENTRIES => self.on_get_state_entries(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
-            msgid::GET_STATE_ROOTS => self.on_get_state_roots(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::CALL_TRANSACTIONS => self.on_call_transactions(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::GET_BLOCK_HASHES_BY_EPOCH => self.on_get_block_hashes_by_epoch(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::GET_BLOCK_HEADERS => self.on_get_block_headers(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
-            msgid::SEND_RAW_TX => self.on_send_raw_tx(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::GET_BLOCK_TXS => self.on_get_block_txs(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::GET_BLOOMS => self.on_get_blooms(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::GET_RECEIPTS => self.on_get_receipts(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::GET_STATE_ENTRIES => self.on_get_state_entries(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::GET_STATE_ROOTS => self.on_get_state_roots(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::GET_STORAGE_ROOTS => self.on_get_storage_roots(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::GET_TX_INFOS => self.on_get_tx_infos(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::GET_TXS => self.on_get_txs(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::GET_WITNESS_INFO => self.on_get_witness_info(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
-            msgid::GET_BLOOMS => self.on_get_blooms(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
-            msgid::GET_BLOCK_TXS => self.on_get_block_txs(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
-            msgid::GET_TX_INFOS => self.on_get_tx_infos(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
-            msgid::GET_STORAGE_ROOTS => self.on_get_storage_roots(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::SEND_RAW_TX => self.on_send_raw_tx(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::STATUS_PING_DEPRECATED => self.on_status_deprecated(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::STATUS_PING_V2 => self.on_status_v2(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             _ => bail!(ErrorKind::UnknownMessage{id: msg_id}),
         }
     }
@@ -878,6 +879,75 @@ impl Provider {
 
         let msg: Box<dyn Message> =
             Box::new(GetStorageRootsResponse { request_id, roots });
+
+        msg.send(io, peer)?;
+        Ok(())
+    }
+
+    fn execution_proof(&self, key: CallKey) -> Result<CallResultWithKey> {
+        let snapshot_epoch_count = self.ledger.snapshot_epoch_count() as u64;
+
+        // state root in current snapshot period
+        let state_root = self.ledger.state_root_of(key.epoch)?.state_root;
+
+        // state root in previous snapshot period
+        let prev_snapshot_state_root = match key.epoch {
+            e if e <= snapshot_epoch_count => None,
+            _ => Some(
+                self.ledger
+                    .state_root_of(key.epoch - snapshot_epoch_count)?
+                    .state_root,
+            ),
+        };
+
+        // execution proof
+        let (_, execution_proof) = self.consensus
+            .as_any()
+            .downcast_ref::<ConsensusGraph>()
+            .expect("downcast should succeed")
+            .call_virtual_with_proof(&key.tx, primitives::EpochNumber::Number(key.epoch))
+            .map_err(|e| e.to_string())?; // TODO
+
+        let proof = CallResultProof {
+            execution_proof,
+            state_root,
+            prev_snapshot_state_root,
+        };
+
+        Ok(CallResultWithKey { key, proof })
+    }
+
+    fn on_call_transactions(
+        &self, io: &dyn NetworkContext, peer: &NodeId, req: CallTransactions,
+    ) -> Result<()> {
+        debug!("on_call_transactions req={:?}", req);
+        self.throttle(peer, &req)?;
+        let request_id = req.request_id;
+
+        let consensus = self.consensus
+            .as_any()
+            .downcast_ref::<ConsensusGraph>()
+            .expect("downcast should succeed");
+
+        let (_, proof) = consensus.call_virtual_with_proof(&req.keys[0].tx, primitives::EpochNumber::Number(req.keys[0].epoch)).unwrap();
+
+        let it = req
+            .keys
+            .into_iter()
+            .take(MAX_ITEMS_TO_SEND)
+            .map(|key| self.execution_proof(key));
+
+        let (results, errors) = partition_results(it);
+
+        if !errors.is_empty() {
+            debug!(
+                "Errors while serving CallTransactions request: {:?}",
+                errors
+            );
+        }
+
+        let msg: Box<dyn Message> =
+            Box::new(CallTransactionsResponse { request_id, results });
 
         msg.send(io, peer)?;
         Ok(())

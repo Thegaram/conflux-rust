@@ -4,7 +4,6 @@
 
 extern crate lru_time_cache;
 
-use cfx_types::Bloom;
 use lru_time_cache::LruCache;
 use parking_lot::RwLock;
 use std::{future::Future, sync::Arc};
@@ -12,13 +11,13 @@ use std::{future::Future, sync::Arc};
 use super::{
     common::{FutureItem, TimeOrdered, PendingItem, SyncManager},
     witnesses::Witnesses,
+    state_roots::StateRoots,
 };
 use crate::{
-    hash::keccak,
     light_protocol::{
         common::{FullPeerState, Peers},
         error::*,
-        message::{msgid, CallTransactions, CallResults, CallKey, CallResultWithKey, CallResultProof},
+        message::{msgid, CallTransactions, CallKey, CallResultWithKey, CallResultProof},
     },
     message::{Message, RequestId},
     UniqueId,
@@ -30,7 +29,8 @@ use cfx_parameters::light::{
 };
 use futures::future::FutureExt;
 use network::{node_table::NodeId, NetworkContext};
-use primitives::{SignedTransaction, EpochNumber};
+use primitives::{SignedTransaction};
+use primitives::StorageKey;
 
 #[derive(Debug)]
 struct Statistics {
@@ -39,13 +39,19 @@ struct Statistics {
     waiting: usize,
 }
 
+// TODO
+pub type ExecutionOutcomePlaceholder = ();
+
 type MissingCallResult = TimeOrdered<CallKey>;
 
-type PendingCall = PendingItem<ExecutionOutcome, ClonableError>;
+type PendingCall = PendingItem<ExecutionOutcomePlaceholder, ClonableError>;
 
 pub struct Calls {
     // series of unique request ids
     request_id_allocator: Arc<UniqueId>,
+
+    // state_root sync manager
+    state_roots: Arc<StateRoots>,
 
     // sync and request manager
     sync_manager: SyncManager<CallKey, MissingCallResult>,
@@ -59,7 +65,7 @@ pub struct Calls {
 
 impl Calls {
     pub fn new(
-        peers: Arc<Peers<FullPeerState>>, request_id_allocator: Arc<UniqueId>,
+        peers: Arc<Peers<FullPeerState>>, state_roots: Arc<StateRoots>, request_id_allocator: Arc<UniqueId>,
         witnesses: Arc<Witnesses>,
     ) -> Self
     {
@@ -70,6 +76,7 @@ impl Calls {
 
         Calls {
             request_id_allocator,
+            state_roots,
             sync_manager,
             verified,
             witnesses,
@@ -91,7 +98,7 @@ impl Calls {
     #[inline]
     pub fn request_now(
         &self, io: &dyn NetworkContext, tx: SignedTransaction, epoch: u64,
-    ) -> impl Future<Output = Result<ExecutionOutcome>> {
+    ) -> impl Future<Output = Result<ExecutionOutcomePlaceholder>> {
         let mut verified = self.verified.write();
         let key = CallKey { tx, epoch };
 
@@ -118,17 +125,17 @@ impl Calls {
         call_results: impl Iterator<Item = CallResultWithKey>,
     ) -> Result<()>
     {
-        for CallResultWithKey { key, result, proof } in call_results {
+        for CallResultWithKey { key, proof } in call_results {
             trace!(
-                "Validating call result {:?} with key {:?} and proof {:?}",
-                result,
+                "Validating call with key {:?} and proof {:?}",
+                // result,
                 key,
                 proof
             );
 
             match self.sync_manager.check_if_requested(peer, id, &key)? {
                 None => continue,
-                Some(_) => self.validate_and_store(key, result, proof)?,
+                Some(_) => self.validate_and_store(key, proof)?,
             };
         }
 
@@ -136,10 +143,10 @@ impl Calls {
     }
 
     #[inline]
-    pub fn validate_and_store(&self, key: CallKey, result: ExecutionOutcome, proof: CallResultProof) -> Result<()> {
+    pub fn validate_and_store(&self, key: CallKey, proof: CallResultProof) -> Result<()> {
         // validate call result
         if let Err(e) =
-            self.validate_call_result(&key.tx, key.epoch, &result, proof)
+            self.validate_call_result(&key.tx, key.epoch, proof)
         {
             // forward error to both rpc caller(s) and sync handler
             // so we need to make it clonable
@@ -159,7 +166,7 @@ impl Calls {
             .write()
             .entry(key.clone())
             .or_insert(PendingItem::pending())
-            .set(result);
+            .set(()); // TODO
 
         self.sync_manager.remove_in_flight(&key);
 
@@ -213,59 +220,45 @@ impl Calls {
 
     #[inline]
     fn validate_call_result(
-        &self, tx: &SignedTransaction, epoch: u64, result: &ExecutionOutcome,
+        &self, tx: &SignedTransaction, epoch: u64,
         proof: CallResultProof,
     ) -> Result<()>
     {
-        unimplemented!()
+        // validate state root
+        let state_root = proof.state_root;
 
-        // // validate state root
-        // let state_root = proof.state_root;
+        self.state_roots
+            .validate_state_root(epoch, &state_root)?;
+            // .chain_err(|| ErrorKind::InvalidStateProof {
+            //     epoch,
+            //     key: key.clone(),
+            //     value: value.clone(),
+            //     reason: "Validation of current state root failed",
+            // })?;
 
-        // self.state_roots
-        //     .validate_state_root(epoch, &state_root)
-        //     .chain_err(|| ErrorKind::InvalidStateProof {
-        //         epoch,
-        //         key: key.clone(),
-        //         value: value.clone(),
-        //         reason: "Validation of current state root failed",
-        //     })?;
+        // validate previous state root
+        let maybe_prev_root = proof.prev_snapshot_state_root;
 
-        // // validate previous state root
-        // let maybe_prev_root = proof.prev_snapshot_state_root;
+        self.state_roots
+            .validate_prev_snapshot_state_root(epoch, &maybe_prev_root)?;
+            // .chain_err(|| ErrorKind::InvalidStateProof {
+            //     epoch,
+            //     key: key.clone(),
+            //     value: value.clone(),
+            //     reason: "Validation of previous state root failed",
+            // })?;
 
-        // self.state_roots
-        //     .validate_prev_snapshot_state_root(epoch, &maybe_prev_root)
-        //     .chain_err(|| ErrorKind::InvalidStateProof {
-        //         epoch,
-        //         key: key.clone(),
-        //         value: value.clone(),
-        //         reason: "Validation of previous state root failed",
-        //     })?;
+        // construct padding
+        let maybe_intermediate_padding = maybe_prev_root.map(|root| {
+            StorageKey::delta_mpt_padding(
+                &root.snapshot_root,
+                &root.intermediate_delta_root,
+            )
+        });
 
-        // // construct padding
-        // let maybe_intermediate_padding = maybe_prev_root.map(|root| {
-        //     StorageKey::delta_mpt_padding(
-        //         &root.snapshot_root,
-        //         &root.intermediate_delta_root,
-        //     )
-        // });
+        // TODO: re-execute on state proof
+        // ...
 
-        // // validate state entry
-        // if !proof.state_proof.is_valid_kv(
-        //     key,
-        //     value.as_ref().map(|v| &**v),
-        //     state_root,
-        //     maybe_intermediate_padding,
-        // ) {
-        //     bail!(ErrorKind::InvalidStateProof {
-        //         epoch,
-        //         key: key.clone(),
-        //         value: value.clone(),
-        //         reason: "Validation of merkle proof failed",
-        //     });
-        // }
-
-        // Ok(())
+        Ok(())
     }
 }

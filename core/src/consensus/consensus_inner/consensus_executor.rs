@@ -617,6 +617,12 @@ impl ConsensusExecutor {
         self.handler.call_virtual(tx, epoch_id, epoch_size)
     }
 
+    pub fn call_virtual_with_proof(
+        &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize,
+    ) -> RpcResult<(ExecutionOutcome, StateProof)> {
+        self.handler.call_virtual_with_proof(tx, epoch_id, epoch_size)
+    }
+
     pub fn stop(&self) {
         // `stopped` is used to allow the execution thread to stopped even the
         // queue is not empty and `ExecutionTask::Stop` has not been
@@ -1852,100 +1858,100 @@ impl ConsensusExecutionHandler {
 
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    pub fn call_virtual_with_proof2(
-        &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize,
-    ) -> RpcResult<(ExecutionOutcome, StateProof)> {
-        let best_block_header = match self.data_man.block_header_by_hash(epoch_id) {
-            None => bail!("invalid epoch id"),
-            Some(h) => h,
-        };
+    // pub fn call_virtual_with_proof2(
+    //     &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize,
+    // ) -> RpcResult<(ExecutionOutcome, StateProof)> {
+    //     let best_block_header = match self.data_man.block_header_by_hash(epoch_id) {
+    //         None => bail!("invalid epoch id"),
+    //         Some(h) => h,
+    //     };
 
-        trace!("best_block_header: {:?}", best_block_header);
+    //     trace!("best_block_header: {:?}", best_block_header);
 
-        let block_height = best_block_header.height() + 1;
+    //     let block_height = best_block_header.height() + 1;
 
-        let start_block_number = match self.data_man.get_epoch_execution_context(epoch_id) {
-            Some(v) => v.start_block_number + epoch_size as u64,
-            None => bail!("cannot obtain the execution context. Database is potentially corrupted!"),
-        };
+    //     let start_block_number = match self.data_man.get_epoch_execution_context(epoch_id) {
+    //         Some(v) => v.start_block_number + epoch_size as u64,
+    //         None => bail!("cannot obtain the execution context. Database is potentially corrupted!"),
+    //     };
 
-        invalid_params_check(
-            "tx",
-            self.verification_config.verify_transaction_in_block(
-                tx,
-                tx.chain_id,
-                block_height,
-            ),
-        )?;
+    //     invalid_params_check(
+    //         "tx",
+    //         self.verification_config.verify_transaction_in_block(
+    //             tx,
+    //             tx.chain_id,
+    //             block_height,
+    //         ),
+    //     )?;
 
-        let internal_contract_map = InternalContractMap::new();
-        let spec = Spec::new_spec();
+    //     let internal_contract_map = InternalContractMap::new();
+    //     let spec = Spec::new_spec();
 
-        // Keep the lock until we get the desired State, otherwise the State may
-        // expire.
-        let state_availability_boundary =
-            self.data_man.state_availability_boundary.read();
-        if !state_availability_boundary
-            .check_availability(best_block_header.height(), epoch_id)
-        {
-            bail!("state is not ready");
-        }
-        let state_index = self.data_man.get_state_readonly_index(epoch_id);
+    //     // Keep the lock until we get the desired State, otherwise the State may
+    //     // expire.
+    //     let state_availability_boundary =
+    //         self.data_man.state_availability_boundary.read();
+    //     if !state_availability_boundary
+    //         .check_availability(best_block_header.height(), epoch_id)
+    //     {
+    //         bail!("state is not ready");
+    //     }
+    //     let state_index = self.data_man.get_state_readonly_index(epoch_id);
 
-        let state_0 = self
-            .data_man
-            .storage_manager
-            .get_state_no_commit(
-                state_index.unwrap(),
-                /* try_open = */ true,
-            )?
-            .ok_or("state deleted")?;
+    //     let state_0 = self
+    //         .data_man
+    //         .storage_manager
+    //         .get_state_no_commit(
+    //             state_index.unwrap(),
+    //             /* try_open = */ true,
+    //         )?
+    //         .ok_or("state deleted")?;
 
-        let state_1 = RecordingState::new(state_0);
+    //     let state_1 = RecordingState::new(state_0);
 
-        let state_db = StateDbGeneric::new(state_1);
+    //     let state_db = StateDbGeneric::new(state_1);
 
-        let mut state = StateGeneric::new(
-            state_db,
-            self.vm.clone(),
-            &spec,
-            start_block_number,
-        );
-        drop(state_availability_boundary);
+    //     let mut state = StateGeneric::new(
+    //         state_db,
+    //         self.vm.clone(),
+    //         &spec,
+    //         start_block_number,
+    //     );
+    //     drop(state_availability_boundary);
 
-        let env = Env {
-            number: start_block_number,
-            author: Default::default(),
-            timestamp: best_block_header.timestamp(),
-            difficulty: Default::default(),
-            accumulated_gas_used: U256::zero(),
-            last_hash: epoch_id.clone(),
-            gas_limit: tx.gas.clone(),
-            epoch_height: block_height,
-            transaction_epoch_bound: self
-                .verification_config
-                .transaction_epoch_bound,
-        };
+    //     let env = Env {
+    //         number: start_block_number,
+    //         author: Default::default(),
+    //         timestamp: best_block_header.timestamp(),
+    //         difficulty: Default::default(),
+    //         accumulated_gas_used: U256::zero(),
+    //         last_hash: epoch_id.clone(),
+    //         gas_limit: tx.gas.clone(),
+    //         epoch_height: block_height,
+    //         transaction_epoch_bound: self
+    //             .verification_config
+    //             .transaction_epoch_bound,
+    //     };
 
-        assert_eq!(state.block_number(), env.number);
+    //     assert_eq!(state.block_number(), env.number);
 
-        let mut ex = ExecutiveGeneric::new(
-            &mut state,
-            &env,
-            self.machine.as_ref(),
-            &spec,
-            &internal_contract_map,
-        );
-        let r = ex.transact_virtual(tx);
+    //     let mut ex = ExecutiveGeneric::new(
+    //         &mut state,
+    //         &env,
+    //         self.machine.as_ref(),
+    //         &spec,
+    //         &internal_contract_map,
+    //     );
+    //     let r = ex.transact_virtual(tx);
 
-        let storage = state.drop().drop();
-        let proof = storage.extract_proof();
-        warn!("!!!!!!!!!!!! proof = {:?}", proof);
-        // let proof = Default::default();
+    //     let storage = state.drop().drop();
+    //     let proof = storage.extract_proof();
+    //     warn!("!!!!!!!!!!!! proof = {:?}", proof);
+    //     // let proof = Default::default();
 
-        trace!("Execution result {:?}", r);
-        Ok((r?, proof))
-    }
+    //     trace!("Execution result {:?}", r);
+    //     Ok((r?, proof))
+    // }
     // !!!!!!!!!!!!!!!!!!!!!!!!!
 
 

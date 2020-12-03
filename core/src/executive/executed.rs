@@ -101,7 +101,7 @@ pub enum TxDropError {
     /// The account nonce in world-state is larger than tx nonce
     OldNonce(U256, U256),
 
-    /// The recipient of current tx is in invalid address field.
+    /// The recipient of current tx is an invalid address.
     /// Although it can be verified in tx packing,
     /// by spec doc, it is checked in execution.
     InvalidRecipientAddress(Address),
