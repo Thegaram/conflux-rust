@@ -4,6 +4,7 @@
 
 use cfx_types::{H160, H256, H520, U128, U256, U64};
 use cfxcore::{
+    executive::ExecutionOutcome,
     block_data_manager::BlockDataManager,
     consensus_parameters::ONE_GDRIP_IN_DRIP,
     light_protocol::{query_service::TxInfo, Error as LightError, ErrorKind},
@@ -36,7 +37,7 @@ use crate::{
         },
         traits::{cfx::Cfx, debug::LocalRpc, test::TestRpc},
         types::{
-            Account as RpcAccount, BlameInfo, Block as RpcBlock,
+            sign_call, Account as RpcAccount, BlameInfo, Block as RpcBlock,
             BlockHashOrEpochNumber, Bytes, CallRequest,
             CheckBalanceAgainstTransactionResponse, ConsensusGraphStates,
             EpochNumber, EstimateGasAndCollateralResponse, Filter as RpcFilter,
@@ -912,6 +913,31 @@ impl RpcImpl {
 
         Box::new(fut.boxed().compat())
     }
+
+    fn call(&self, request: CallRequest, epoch: Option<EpochNumber>) -> BoxFuture<Bytes> {
+        let epoch = epoch.unwrap_or(EpochNumber::LatestState).into();
+
+        let epoch_height = self.consensus.best_epoch_number();
+        let chain_id = self.consensus.best_chain_id();
+        let signed_tx = sign_call(epoch_height, chain_id, request);
+        trace!("signed tx for call: {:?}", signed_tx);
+
+        // clone to avoid lifetime issues due to capturing `self`
+        let light = self.light.clone();
+
+        let fut = async move {
+            let outcome = light.call_virtual(signed_tx, epoch).await
+                .map_err(|e| e.to_string())
+                .map_err(RpcError::invalid_params)?;
+
+            match outcome {
+                ExecutionOutcome::Finished(executed) => Ok(executed.output.into()),
+                x => Err(format!("Execution error: {:?}", x)).map_err(RpcError::invalid_params)?, // TODO
+            }
+        };
+
+        Box::new(fut.boxed().compat())
+    }
 }
 
 pub struct CfxHandler {
@@ -944,6 +970,7 @@ impl Cfx for CfxHandler {
             fn block_by_hash_with_pivot_assumption(&self, block_hash: H256, pivot_hash: H256, epoch_number: U64) -> BoxFuture<RpcBlock>;
             fn block_by_hash(&self, hash: H256, include_txs: bool) -> BoxFuture<Option<RpcBlock>>;
             fn blocks_by_epoch(&self, num: EpochNumber) -> RpcResult<Vec<H256>>;
+            fn call(&self, request: CallRequest, epoch: Option<EpochNumber>) -> BoxFuture<Bytes>;
             fn check_balance_against_transaction(&self, account_addr: H160, contract_addr: H160, gas_limit: U256, gas_price: U256, storage_limit: U256, epoch: Option<EpochNumber>) -> BoxFuture<CheckBalanceAgainstTransactionResponse>;
             fn code(&self, address: H160, epoch_num: Option<EpochNumber>) -> BoxFuture<Bytes>;
             fn collateral_for_storage(&self, address: H160, num: Option<EpochNumber>) -> BoxFuture<U256>;
@@ -966,7 +993,6 @@ impl Cfx for CfxHandler {
 
     // TODO(thegaram): add support for these
     not_supported! {
-        fn call(&self, request: CallRequest, epoch: Option<EpochNumber>) -> RpcResult<Bytes>;
         fn estimate_gas_and_collateral(&self, request: CallRequest, epoch_num: Option<EpochNumber>) -> RpcResult<EstimateGasAndCollateralResponse>;
         fn get_block_reward_info(&self, num: EpochNumber) -> RpcResult<Vec<RpcRewardInfo>>;
         fn get_supply_info(&self, epoch_num: Option<EpochNumber>) -> RpcResult<TokenSupplyInfo>;

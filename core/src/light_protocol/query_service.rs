@@ -15,6 +15,7 @@ use crate::{
     state::COMMISSION_PRIVILEGE_SPECIAL_KEY,
     sync::SynchronizationGraph,
     ConsensusGraph, Notifications,
+    executive::ExecutionOutcome,
 };
 use cfx_parameters::{
     consensus::DEFERRED_STATE_EPOCH_COUNT,
@@ -276,6 +277,19 @@ impl QueryService {
             *MAX_POLL_TIME,
             format!("Timeout while retrieving tx info for tx {:?}", hash),
             self.with_io(|io| self.handler.tx_infos.request_now(io, hash)),
+        )
+        .await
+    }
+
+    async fn retrieve_call_result(
+        &self, tx: SignedTransaction, epoch: u64,
+    ) -> Result<ExecutionOutcome, Error> {
+        trace!("retrieve_call_result tx = {:?} epoch = {:?}", tx, epoch);
+
+        with_timeout(
+            *MAX_POLL_TIME,
+            format!("Timeout while calling tx {:?} at epoch {:?}", tx, epoch),
+            self.with_io(|io| self.handler.calls.request_now(io, tx, epoch)),
         )
         .await
     }
@@ -611,6 +625,14 @@ impl QueryService {
             maybe_state_root,
             prior_gas_used,
         })
+    }
+
+    pub async fn call_virtual(
+        &self, tx: SignedTransaction, epoch: EpochNumber,
+    ) -> Result<ExecutionOutcome, Error> {
+        debug!("call_virtual tx={:?} epoch={:?}", tx, epoch);
+        let epoch = self.get_height_from_epoch_number(epoch)?;
+        self.retrieve_call_result(tx, epoch).await
     }
 
     /// Relay raw transaction to all peers.

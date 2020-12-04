@@ -1155,7 +1155,7 @@ impl Cfx for CfxHandler {
             fn collateral_for_storage(&self, address: H160, num: Option<EpochNumber>)
                 -> BoxFuture<U256>;
             fn call(&self, request: CallRequest, epoch: Option<EpochNumber>)
-                -> JsonRpcResult<Bytes>;
+                -> BoxFuture<Bytes>;
             fn estimate_gas_and_collateral(
                 &self, request: CallRequest, epoch_number: Option<EpochNumber>)
                 -> JsonRpcResult<EstimateGasAndCollateralResponse>;

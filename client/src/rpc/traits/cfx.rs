@@ -154,7 +154,7 @@ pub trait Cfx {
     #[rpc(name = "cfx_call")]
     fn call(
         &self, tx: CallRequest, epoch_number: Option<EpochNumber>,
-    ) -> JsonRpcResult<Bytes>;
+    ) -> BoxFuture<Bytes>;
 
     /// Returns logs matching the filter provided.
     #[rpc(name = "cfx_getLogs")]
