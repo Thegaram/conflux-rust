@@ -160,48 +160,81 @@ impl StateProof {
         }
     }
 
-    pub fn get_value(&self, key: StorageKey, state_root: &StateRoot, maybe_intermediate_padding: Option<DeltaMptKeyPadding>) -> (bool, Option<&[u8]>) {
+    pub fn get_value(&self, storage_key: StorageKey, state_root: &StateRoot, maybe_intermediate_padding: Option<DeltaMptKeyPadding>) -> (bool, Option<&[u8]>) {
         let delta_root = &state_root.delta_root;
         let intermediate_root = &state_root.intermediate_delta_root;
         let snapshot_root = &state_root.snapshot_root;
 
-        // --------- delta ---------
+        match self.delta_proof {
+            None => {
+                // empty proof for non-empty trie is invalid
+                if delta_root.ne(&MERKLE_NULL_NODE) {
+                    return (false, None);
+                }
+            }
 
-        let padding = StorageKey::delta_mpt_padding(
-            &snapshot_root,
-            &intermediate_root,
-        );
+            Some(ref proof) => {
+                let padding = StorageKey::delta_mpt_padding(
+                    &snapshot_root,
+                    &intermediate_root,
+                );
 
-        let delta_key = key.to_delta_mpt_key_bytes(&padding);
+                let key = storage_key.to_delta_mpt_key_bytes(&padding);
 
-        // TODO: what if none?
-        match self.delta_proof.as_ref().unwrap().get_value(&delta_key[..], delta_root) {
-            (false, _) => return (false, None),
-            (true, Some(x)) => return (true, Some(x)),
-            _ => {}
+                // check if delta proof is valid
+                match proof.get_value(&key[..], delta_root) {
+                    (false, _) => return (false, None),
+                    (true, Some(x)) => return (true, Some(x)),
+                    _ => {}
+                }
+            }
         }
 
-        // --------- intermediate ---------
+        match self.intermediate_proof {
+            None => {
+                // empty proof for non-empty trie is invalid
+                if intermediate_root.ne(&MERKLE_NULL_NODE) {
+                    return (false, None);
+                }
+            }
 
-        let intermediate_key = match maybe_intermediate_padding {
-            None => return (false, None),
-            Some(p) => key.to_delta_mpt_key_bytes(&p),
-        };
+            Some(ref proof) => {
+                // convert storage key into delta mpt key
+                let key = match maybe_intermediate_padding {
+                    None => return (false, None),
+                    Some(p) => storage_key.to_delta_mpt_key_bytes(&p),
+                };
 
-        match self.intermediate_proof.as_ref().unwrap().get_value(&intermediate_key[..], intermediate_root) {
-            (false, _) => return (false, None),
-            (true, Some(x)) => return (true, Some(x)),
-            _ => {}
+                // check if intermediate proof is valid
+                match proof.get_value(&key[..], intermediate_root) {
+                    (false, _) => return (false, None),
+                    (true, Some(x)) => return (true, Some(x)),
+                    _ => {}
+                }
+            }
         }
 
         // --------- snapshot ---------
 
-        let storage_key = key.to_key_bytes();
+        match self.snapshot_proof {
+            None => {
+                // empty proof for non-empty trie is invalid
+                if snapshot_root.ne(&MERKLE_NULL_NODE) {
+                    return (false, None);
+                }
 
-        match self.snapshot_proof.as_ref().unwrap().get_value(&storage_key[..], snapshot_root) {
-            (false, _) => return (false, None),
-            (true, Some(x)) => return (true, Some(x)),
-            _ => return (true, None),
+                (true, None)
+            }
+
+            Some(ref proof) => {
+                let key = storage_key.to_key_bytes();
+
+                match proof.get_value(&key[..], snapshot_root) {
+                    (false, _) => return (false, None),
+                    (true, Some(x)) => return (true, Some(x)),
+                    _ => return (true, None),
+                }
+            }
         }
     }
 }

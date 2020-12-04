@@ -139,6 +139,7 @@ impl<StateDbStorage: StorageStateTrait> StateGeneric<StateDbStorage> {
         block_number: u64,
     ) -> Self
     {
+        // TODO: fail gracefully
         let annual_interest_rate =
             db.get_annual_interest_rate().expect("no db error");
         let accumulate_interest_rate =

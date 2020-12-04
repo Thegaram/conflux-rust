@@ -33,6 +33,13 @@ use network::{node_table::NodeId, NetworkContext};
 use primitives::{SignedTransaction};
 use primitives::StorageKey;
 
+fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
+    use std::hash::Hasher;
+    let mut s = std::collections::hash_map::DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
+}
+
 #[derive(Debug)]
 struct Statistics {
     cached: usize,
@@ -103,7 +110,7 @@ impl Calls {
         debug!(
             "call sync statistics: {:?}",
             Statistics {
-                cached: self.verified.read().len(),
+                cached: self.verified.read().len(), // TODO: this is inaccurate
                 in_flight: self.sync_manager.num_in_flight(),
                 waiting: self.sync_manager.num_waiting(),
             }
@@ -118,11 +125,18 @@ impl Calls {
         let key = CallKey { tx, epoch };
 
         if !verified.contains_key(&key) {
+            trace!("!!!!!!!!! requesting now; tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
             let missing = std::iter::once(MissingCallResult::new(key.clone()));
 
             self.sync_manager.request_now(missing, |peer, keys| {
                 self.send_request(io, peer, keys)
             });
+
+            if self.sync_manager.contains(&key) {
+                trace!("!!!!!!!!! requesting now; synx manager CONTAINS tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
+            } else {
+                trace!("!!!!!!!!! requesting now; synx manager DOES NOT CONTAIN tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
+            }
         }
 
         verified
@@ -149,8 +163,17 @@ impl Calls {
                 proof
             );
 
+            if self.sync_manager.contains(&key) {
+                trace!("!!!!!!!!! receiving; synx manager CONTAINS tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
+            } else {
+                trace!("!!!!!!!!! receiving; synx manager DOES NOT CONTAIN tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
+            }
+
             match self.sync_manager.check_if_requested(peer, id, &key)? {
-                None => continue,
+                None => {
+                    trace!("!!!!!!!!! request not found; tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
+                    continue
+                },
                 Some(_) => self.validate_and_store(key, proof)?,
             };
         }
@@ -244,6 +267,8 @@ impl Calls {
         // validate state root
         let state_root = proof.state_root;
 
+        trace!("!!!!!!!!! validating state root");
+
         self.state_roots
             .validate_state_root(epoch, &state_root)?;
             // .chain_err(|| ErrorKind::InvalidStateProof {
@@ -255,6 +280,8 @@ impl Calls {
 
         // validate previous state root
         let maybe_prev_root = proof.prev_snapshot_state_root;
+
+        trace!("!!!!!!!!! validating previous state root");
 
         self.state_roots
             .validate_prev_snapshot_state_root(epoch, &maybe_prev_root)?;
@@ -282,9 +309,13 @@ impl Calls {
         // TODO: re-execute on state proof
         // ...
 
+        trace!("!!!!!!!!! calling virtual on proof");
+
         let outcome = consensus
             .call_virtual_on_proof(tx, primitives::EpochNumber::Number(epoch), proof.execution_proof, state_root) // TODO: pass intermediate_padding
             .map_err(|e| e.to_string())?; // TODO
+
+        trace!("!!!!!!!!! calling virtual on proof finished");
 
 
         // tx: &SignedTransaction, epoch: EpochNumber, proof: StateProof, root: StateRoot,

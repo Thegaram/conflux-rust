@@ -917,6 +917,8 @@ impl RpcImpl {
     fn call(&self, request: CallRequest, epoch: Option<EpochNumber>) -> BoxFuture<Bytes> {
         let epoch = epoch.unwrap_or(EpochNumber::LatestState).into();
 
+        info!("RPC Request: cfx_call request={:?} epoch={:?}", request, epoch);
+
         let epoch_height = self.consensus.best_epoch_number();
         let chain_id = self.consensus.best_chain_id();
         let signed_tx = sign_call(epoch_height, chain_id, request);

@@ -924,13 +924,6 @@ impl Provider {
         self.throttle(peer, &req)?;
         let request_id = req.request_id;
 
-        let consensus = self.consensus
-            .as_any()
-            .downcast_ref::<ConsensusGraph>()
-            .expect("downcast should succeed");
-
-        let (_, proof) = consensus.call_virtual_with_proof(&req.keys[0].tx, primitives::EpochNumber::Number(req.keys[0].epoch)).unwrap();
-
         let it = req
             .keys
             .into_iter()
@@ -945,6 +938,8 @@ impl Provider {
                 errors
             );
         }
+
+        trace!("call transaction results: {:?}", results);
 
         let msg: Box<dyn Message> =
             Box::new(CallTransactionsResponse { request_id, results });

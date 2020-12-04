@@ -320,9 +320,9 @@ pub struct StorageRoots {
     Clone,
     Debug,
     //Default,
-    PartialEq,
+    // PartialEq,
     Eq,
-    //PartialOrd,
+    //PartialOrd, // DO NOT DERIVE!
     //Ord,
     Hash,
     RlpEncodable,
@@ -333,6 +333,13 @@ pub struct CallKey {
     pub epoch: u64,
 }
 
+impl PartialEq for CallKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.tx.hash() == other.tx.hash() && self.epoch == other.epoch
+    }
+}
+
+// TODO: compare hash?
 impl Ord for CallKey {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering { self.tx.hash().cmp(&other.tx.hash()).then(self.epoch.cmp(&other.epoch)) }
 }

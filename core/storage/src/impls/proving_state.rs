@@ -40,11 +40,13 @@ impl StateTrait for ProvingState {
     }
 
     fn get(&self, access_key: StorageKey) -> Result<Option<Box<[u8]>>> {
+        trace!("!!!!!!!! proving state get key {:?}", access_key);
+
         match self.entries_set.get(&access_key.to_key_bytes()) {
             Some(x) => Ok(Some(x.clone())),
             None => {
                 match self.proof.get_value(access_key, &self.root, None) {
-                    (false, _) => panic!("AA"), // TODO
+                    (false, _) => bail!("Cannot find key {:?}", access_key), // TODO
                     (true, None) => Ok(None),
                     (true, Some(v)) => Ok(Some(v.to_vec().into_boxed_slice())), // TODO
                 }

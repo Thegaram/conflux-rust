@@ -1,4 +1,5 @@
-pragma solidity >=0.4.22 <0.6.0;
+pragma solidity >=0.6.6;
+
 contract EventsTestContract {
 
     uint32 counter_foo;
@@ -23,5 +24,9 @@ contract EventsTestContract {
 
         emit Bar(msg.sender, counter_bar);
         counter_bar += 1;
+    }
+
+    function get_foo() public view returns (uint32) {
+        return counter_foo;
     }
 }

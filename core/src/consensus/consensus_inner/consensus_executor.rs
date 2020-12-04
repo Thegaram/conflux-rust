@@ -1892,14 +1892,14 @@ impl ConsensusExecutionHandler {
 
         // Keep the lock until we get the desired State, otherwise the State may
         // expire.
-        let state_availability_boundary =
-            self.data_man.state_availability_boundary.read();
-        if !state_availability_boundary
-            .check_availability(best_block_header.height(), epoch_id)
-        {
-            bail!("state is not ready");
-        }
-        let state_index = self.data_man.get_state_readonly_index(epoch_id);
+        // let state_availability_boundary =
+        //     self.data_man.state_availability_boundary.read();
+        // if !state_availability_boundary
+        //     .check_availability(best_block_header.height(), epoch_id)
+        // {
+        //     bail!("state is not ready");
+        // }
+        // let state_index = self.data_man.get_state_readonly_index(epoch_id);
         trace!("best_block_header: {:?}", best_block_header);
         let time_stamp = best_block_header.timestamp();
 
@@ -1914,7 +1914,11 @@ impl ConsensusExecutionHandler {
 
         // let state_1 = RecordingState::new(state_0);
 
+        trace!("!!!!!!!!! constructing proving state");
+
         let state = ProvingState::new(proof, root);
+
+        trace!("!!!!!!!!! constructed proving state");
 
         let state_db = StateDbGeneric::new(state);
 
@@ -1924,7 +1928,7 @@ impl ConsensusExecutionHandler {
             &spec,
             start_block_number,
         );
-        drop(state_availability_boundary);
+        // drop(state_availability_boundary);
 
         let env = Env {
             number: start_block_number,
@@ -1947,7 +1951,10 @@ impl ConsensusExecutionHandler {
             &spec,
             &internal_contract_map,
         );
+
+        trace!("!!!!!!!!! starting execution");
         let r = ex.transact_virtual(tx);
+        trace!("!!!!!!!!! finished execution");
 
         // let storage = state.drop().drop();
         // let proof = storage.extract_proof();
