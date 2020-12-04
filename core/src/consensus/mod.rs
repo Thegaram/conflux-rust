@@ -59,7 +59,7 @@ use primitives::{
     filter::{Filter, FilterError},
     log_entry::LocalizedLogEntry,
     receipt::Receipt,
-    EpochId, EpochNumber, SignedTransaction, TransactionIndex,
+    EpochId, EpochNumber, SignedTransaction, TransactionIndex, StateRoot,
 };
 use rayon::prelude::*;
 use std::{
@@ -1000,6 +1000,21 @@ impl ConsensusGraph {
             bail!("cannot get block hashes in the specified epoch, maybe it does not exist?");
         };
         self.executor.call_virtual_with_proof(tx, &epoch_id, epoch_size)
+    }
+
+    pub fn call_virtual_on_proof(
+        &self, tx: &SignedTransaction, epoch: EpochNumber, proof: StateProof, root: StateRoot,
+    ) -> RpcResult<ExecutionOutcome> {
+        // only allow to call against stated epoch
+        self.validate_stated_epoch(&epoch)?;
+        let (epoch_id, epoch_size) = if let Ok(v) =
+            self.get_block_hashes_by_epoch(epoch)
+        {
+            (v.last().expect("pivot block always exist").clone(), v.len())
+        } else {
+            bail!("cannot get block hashes in the specified epoch, maybe it does not exist?");
+        };
+        self.executor.call_virtual_on_proof(tx, &epoch_id, epoch_size, proof, root)
     }
 
     /// Get the number of processed blocks (i.e., the number of calls to

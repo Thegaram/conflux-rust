@@ -21,7 +21,7 @@ use crate::{
             StatusPingV2, StatusPongDeprecatedV1, StatusPongV2,
             StorageRoots as GetStorageRootsResponse,
             TxInfos as GetTxInfosResponse, Txs as GetTxsResponse,
-            WitnessInfo as GetWitnessInfoResponse, CallTransactions, CallResults as CallTransactionsResponse,
+            WitnessInfo as GetWitnessInfoResponse, CallResults as CallTransactionsResponse,
         },
         LightNodeConfiguration, LIGHT_PROTOCOL_OLD_VERSIONS_TO_SUPPORT,
         LIGHT_PROTOCOL_VERSION, LIGHT_PROTO_V1,
@@ -173,6 +173,7 @@ impl Handler {
         ));
 
         let calls = Calls::new(
+            consensus.clone(),
             peers.clone(),
             state_roots.clone(),
             request_id_allocator.clone(),

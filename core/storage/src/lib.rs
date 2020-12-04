@@ -172,6 +172,7 @@ pub use self::{
             sqlite::SqliteConnection,
         },
         recording_state::RecordingState,
+        proving_state::ProvingState,
     },
     state::{State as StorageState, StateTrait as StorageStateTrait},
     state_manager::{

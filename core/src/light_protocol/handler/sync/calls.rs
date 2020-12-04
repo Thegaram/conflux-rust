@@ -5,7 +5,7 @@
 extern crate lru_time_cache;
 
 use lru_time_cache::LruCache;
-use parking_lot::RwLock;
+use parking_lot::{RwLock, Mutex};
 use std::{future::Future, sync::Arc};
 
 use super::{
@@ -14,6 +14,7 @@ use super::{
     state_roots::StateRoots,
 };
 use crate::{
+    consensus::{SharedConsensusGraph, ConsensusGraph},
     light_protocol::{
         common::{FullPeerState, Peers},
         error::*,
@@ -39,14 +40,27 @@ struct Statistics {
     waiting: usize,
 }
 
-// TODO
-pub type ExecutionOutcomePlaceholder = ();
+#[derive(Clone)]
+struct WrappedExecutionOutcome(Arc<Mutex<Option<ExecutionOutcome>>>);
+
+impl WrappedExecutionOutcome {
+    fn new(outcome: ExecutionOutcome) -> Self {
+        Self(Arc::new(Mutex::new(Some(outcome))))
+    }
+
+    fn unwrap(self) -> ExecutionOutcome {
+        self.0.lock().take().unwrap() // TODO
+    }
+}
 
 type MissingCallResult = TimeOrdered<CallKey>;
 
-type PendingCall = PendingItem<ExecutionOutcomePlaceholder, ClonableError>;
+type PendingCall = PendingItem<WrappedExecutionOutcome, ClonableError>;
 
 pub struct Calls {
+    // shared consensus graph
+    consensus: SharedConsensusGraph,
+
     // series of unique request ids
     request_id_allocator: Arc<UniqueId>,
 
@@ -65,7 +79,7 @@ pub struct Calls {
 
 impl Calls {
     pub fn new(
-        peers: Arc<Peers<FullPeerState>>, state_roots: Arc<StateRoots>, request_id_allocator: Arc<UniqueId>,
+        consensus: SharedConsensusGraph, peers: Arc<Peers<FullPeerState>>, state_roots: Arc<StateRoots>, request_id_allocator: Arc<UniqueId>,
         witnesses: Arc<Witnesses>,
     ) -> Self
     {
@@ -75,6 +89,7 @@ impl Calls {
         let verified = Arc::new(RwLock::new(cache));
 
         Calls {
+            consensus,
             request_id_allocator,
             state_roots,
             sync_manager,
@@ -98,7 +113,7 @@ impl Calls {
     #[inline]
     pub fn request_now(
         &self, io: &dyn NetworkContext, tx: SignedTransaction, epoch: u64,
-    ) -> impl Future<Output = Result<ExecutionOutcomePlaceholder>> {
+    ) -> impl Future<Output = Result<ExecutionOutcome>> {
         let mut verified = self.verified.write();
         let key = CallKey { tx, epoch };
 
@@ -117,6 +132,7 @@ impl Calls {
 
         FutureItem::new(key, self.verified.clone())
             .map(|res| res.map_err(|e| e.into()))
+            .map(|res| res.map(|outcome| outcome.unwrap()))
     }
 
     #[inline]
@@ -145,32 +161,33 @@ impl Calls {
     #[inline]
     pub fn validate_and_store(&self, key: CallKey, proof: CallResultProof) -> Result<()> {
         // validate call result
-        if let Err(e) =
-            self.validate_call_result(&key.tx, key.epoch, proof)
-        {
-            // forward error to both rpc caller(s) and sync handler
-            // so we need to make it clonable
-            let e = ClonableError::from(e);
+        match self.execute_call(&key.tx, key.epoch, proof) {
+            Err(e) => {
+                // forward error to both rpc caller(s) and sync handler
+                // so we need to make it clonable
+                let e = ClonableError::from(e);
 
-            self.verified
-                .write()
-                .entry(key.clone())
-                .or_insert(PendingItem::pending())
-                .set_error(e.clone());
+                self.verified
+                    .write()
+                    .entry(key.clone())
+                    .or_insert(PendingItem::pending())
+                    .set_error(e.clone());
 
-            bail!(e);
+                bail!(e);
+            }
+            Ok(outcome) => {
+                // store state entry by state key
+                self.verified
+                    .write()
+                    .entry(key.clone())
+                    .or_insert(PendingItem::pending())
+                    .set(WrappedExecutionOutcome::new(outcome));
+
+                self.sync_manager.remove_in_flight(&key);
+
+                Ok(())
+            }
         }
-
-        // store state entry by state key
-        self.verified
-            .write()
-            .entry(key.clone())
-            .or_insert(PendingItem::pending())
-            .set(()); // TODO
-
-        self.sync_manager.remove_in_flight(&key);
-
-        Ok(())
     }
 
     #[inline]
@@ -219,10 +236,10 @@ impl Calls {
     }
 
     #[inline]
-    fn validate_call_result(
+    fn execute_call(
         &self, tx: &SignedTransaction, epoch: u64,
         proof: CallResultProof,
-    ) -> Result<()>
+    ) -> Result<ExecutionOutcome>
     {
         // validate state root
         let state_root = proof.state_root;
@@ -256,9 +273,22 @@ impl Calls {
             )
         });
 
+        let consensus = self.consensus
+            .as_any()
+            .downcast_ref::<ConsensusGraph>()
+            .expect("downcast should succeed");
+            // .call_virtual_with_proof(&key.tx, primitives::EpochNumber::Number(key.epoch))
+
         // TODO: re-execute on state proof
         // ...
 
-        Ok(())
+        let outcome = consensus
+            .call_virtual_on_proof(tx, primitives::EpochNumber::Number(epoch), proof.execution_proof, state_root) // TODO: pass intermediate_padding
+            .map_err(|e| e.to_string())?; // TODO
+
+
+        // tx: &SignedTransaction, epoch: EpochNumber, proof: StateProof, root: StateRoot,
+
+        Ok(outcome)
     }
 }
