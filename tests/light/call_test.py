@@ -71,11 +71,31 @@ class CallTest(ConfluxTestFramework):
 
         data_hex = encode_hex_0x(keccak(b"get_foo()"))
         x = self.rpc[FULLNODE0].call(contract_addr, data_hex)
-        self.log.info(f"x = {x}")
+        self.log.info(f"full x = {x}")
 
         data_hex = encode_hex_0x(keccak(b"get_foo()"))
         x = self.rpc[LIGHTNODE].call(contract_addr, data_hex)
-        self.log.info(f"x = {x}")
+        self.log.info(f"light x = {x}")
+
+        receipt = self.call_contract(sender, priv_key, contract_addr, encode_hex_0x(keccak(b"foo()")))
+        self.rpc[FULLNODE0].generate_blocks(20)
+        sync_blocks(self.nodes)
+
+        data_hex = encode_hex_0x(keccak(b"get_foo()"))
+        x = self.rpc[FULLNODE0].call(contract_addr, data_hex)
+        self.log.info(f"full x = {x}")
+
+        data_hex = encode_hex_0x(keccak(b"get_foo()"))
+        x = self.rpc[LIGHTNODE].call(contract_addr, data_hex)
+        self.log.info(f"light x = {x}")
+
+        data_hex = encode_hex_0x(keccak(b"delete()"))
+        x = self.rpc[FULLNODE0].call(contract_addr, data_hex)
+        self.log.info(f"full x = {x}")
+
+        # data_hex = encode_hex_0x(keccak(b"delete()"))
+        # x = self.rpc[LIGHTNODE].call(contract_addr, data_hex)
+        # self.log.info(f"x = {x}")
 
         self.log.info("Pass")
 

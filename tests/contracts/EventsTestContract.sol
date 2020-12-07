@@ -29,4 +29,9 @@ contract EventsTestContract {
     function get_foo() public view returns (uint32) {
         return counter_foo;
     }
+
+    function delete_foo() public returns (uint32) {
+        delete counter_foo;
+        return counter_foo;
+    }
 }
