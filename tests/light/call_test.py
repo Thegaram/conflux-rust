@@ -89,13 +89,39 @@ class CallTest(ConfluxTestFramework):
         x = self.rpc[LIGHTNODE].call(contract_addr, data_hex)
         self.log.info(f"light x = {x}")
 
-        data_hex = encode_hex_0x(keccak(b"delete()"))
+        data_hex = encode_hex_0x(keccak(b"delete_foo()"))
         x = self.rpc[FULLNODE0].call(contract_addr, data_hex)
         self.log.info(f"full x = {x}")
 
-        # data_hex = encode_hex_0x(keccak(b"delete()"))
-        # x = self.rpc[LIGHTNODE].call(contract_addr, data_hex)
-        # self.log.info(f"x = {x}")
+        data_hex = encode_hex_0x(keccak(b"delete_foo()"))
+        x = self.rpc[LIGHTNODE].call(contract_addr, data_hex)
+        self.log.info(f"light x = {x}")
+
+        # --------------------------------------
+
+        data_hex = encode_hex_0x(keccak(b"get_mapping()"))
+        x = self.rpc[FULLNODE0].call(contract_addr, data_hex)
+        self.log.info(f"full x = {x}")
+
+        data_hex = encode_hex_0x(keccak(b"get_mapping()"))
+        x = self.rpc[LIGHTNODE].call(contract_addr, data_hex)
+        self.log.info(f"light x = {x}")
+
+        data_hex = encode_hex_0x(keccak(b"delete_mapping()"))
+        x = self.rpc[FULLNODE0].call(contract_addr, data_hex)
+        self.log.info(f"full x = {x}")
+
+        data_hex = encode_hex_0x(keccak(b"delete_mapping()"))
+        x = self.rpc[LIGHTNODE].call(contract_addr, data_hex)
+        self.log.info(f"light x = {x}")
+
+        data_hex = encode_hex_0x(keccak(b"destroy()"))
+        self.rpc[FULLNODE0].call(contract_addr, data_hex)
+        self.log.info(f"full destroyed")
+
+        data_hex = encode_hex_0x(keccak(b"destroy()"))
+        self.rpc[LIGHTNODE].call(contract_addr, data_hex)
+        self.log.info(f"light destroyed")
 
         self.log.info("Pass")
 
@@ -173,9 +199,15 @@ class CallTest(ConfluxTestFramework):
         return "0x" + ("%x" % number).zfill(64)
 
     def deploy_contract(self, sender, priv_key, data_hex):
-        tx = self.rpc[FULLNODE0].new_contract_tx(receiver="", data_hex=data_hex, sender=sender, priv_key=priv_key, storage_limit=1000)
+        tx = self.rpc[FULLNODE0].new_contract_tx(receiver="", data_hex=data_hex, sender=sender, priv_key=priv_key, storage_limit=2000)
         assert_equal(self.rpc[FULLNODE0].send_tx(tx, True), tx.hash_hex())
         receipt = self.rpc[FULLNODE0].get_transaction_receipt(tx.hash_hex())
+
+        if receipt["outcomeStatus"] != "0x0":
+            error = receipt["txExecErrorMsg"]
+            self.log.info(f"Error deploying contract: {error}")
+            assert(False)
+
         assert_equal(receipt["outcomeStatus"], "0x0")
         address = receipt["contractCreated"]
         assert_is_hex_string(address)
@@ -185,7 +217,12 @@ class CallTest(ConfluxTestFramework):
         tx = self.rpc[FULLNODE0].new_contract_tx(receiver=contract, data_hex=data_hex, sender=sender, priv_key=priv_key, storage_limit=1000)
         assert_equal(self.rpc[FULLNODE0].send_tx(tx, True), tx.hash_hex())
         receipt = self.rpc[FULLNODE0].get_transaction_receipt(tx.hash_hex())
-        assert_equal(receipt["outcomeStatus"], "0x0")
+
+        if receipt["outcomeStatus"] != "0x0":
+            error = receipt["txExecErrorMsg"]
+            self.log.info(f"Error calling contract: {error}")
+            assert(False)
+
         return receipt
 
 if __name__ == "__main__":

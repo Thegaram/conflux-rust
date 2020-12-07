@@ -10,7 +10,6 @@ use std::{future::Future, sync::Arc};
 
 use super::{
     common::{FutureItem, TimeOrdered, PendingItem, SyncManager},
-    witnesses::Witnesses,
     state_roots::StateRoots,
 };
 use crate::{
@@ -79,15 +78,11 @@ pub struct Calls {
 
     // bloom filters received from full node
     verified: Arc<RwLock<LruCache<CallKey, PendingCall>>>,
-
-    // witness sync manager
-    witnesses: Arc<Witnesses>,
 }
 
 impl Calls {
     pub fn new(
         consensus: SharedConsensusGraph, peers: Arc<Peers<FullPeerState>>, state_roots: Arc<StateRoots>, request_id_allocator: Arc<UniqueId>,
-        witnesses: Arc<Witnesses>,
     ) -> Self
     {
         let sync_manager = SyncManager::new(peers, msgid::CALL_TRANSACTIONS);
@@ -101,7 +96,6 @@ impl Calls {
             state_roots,
             sync_manager,
             verified,
-            witnesses,
         }
     }
 

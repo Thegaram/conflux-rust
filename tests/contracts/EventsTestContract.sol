@@ -5,12 +5,15 @@ contract EventsTestContract {
     uint32 counter_foo;
     uint32 counter_bar;
 
+    mapping(address => uint32) m;
+
     event Constructed(address indexed by, address data);
     event Foo(address indexed by, uint32 indexed num);
     event Bar(address indexed by, uint32 indexed num);
 
     constructor() public {
         emit Constructed(msg.sender, msg.sender);
+        m[msg.sender] = 1;
     }
 
     function foo() public {
@@ -33,5 +36,18 @@ contract EventsTestContract {
     function delete_foo() public returns (uint32) {
         delete counter_foo;
         return counter_foo;
+    }
+
+    function get_mapping() public view returns (uint32) {
+        return m[msg.sender];
+    }
+
+    function delete_mapping() public returns (uint32) {
+        delete m[msg.sender];
+        return m[msg.sender];
+    }
+
+    function destroy() public {
+        selfdestruct(msg.sender);
     }
 }

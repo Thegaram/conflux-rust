@@ -62,7 +62,26 @@ impl<Storage: StateTrait> StateTrait for RecordingState<Storage> {
     fn delete_all<AM: access_mode::AccessMode>(
         &mut self, access_key_prefix: StorageKey,
     ) -> Result<Option<Vec<MptKeyValue>>> {
-        self.storage.delete_all::<AM>(access_key_prefix)
+        // TODO: add this to proof?
+        // is it very expensive?
+        let kvs = match self.storage.delete_all::<AM>(access_key_prefix)? {
+            None => return Ok(None),
+            Some(kvs) => kvs,
+        };
+
+        let mut proof_in_progress = self.proof_in_progress.lock();
+
+        for (k, _) in &kvs {
+            let access_key = StorageKey::from_key_bytes::<CheckInput>(k)?;
+            let (_, proof) = self.storage.get_with_proof(access_key)?;
+
+            *proof_in_progress = proof_in_progress
+                .clone()
+                .merge(proof)
+                .expect("proof is valid"); // TODO: do not clone and handle error properly
+        }
+
+        Ok(Some(kvs))
     }
 }
 
@@ -76,4 +95,4 @@ use crate::{
 };
 use cfx_internal_common::StateRootWithAuxInfo;
 use delegate::delegate;
-use primitives::{EpochId, NodeMerkleTriplet, StaticBool, StorageKey};
+use primitives::{EpochId, NodeMerkleTriplet, StaticBool, StorageKey, CheckInput};

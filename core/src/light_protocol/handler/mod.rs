@@ -177,7 +177,6 @@ impl Handler {
             peers.clone(),
             state_roots.clone(),
             request_id_allocator.clone(),
-            witnesses.clone(),
         );
 
         let state_entries = StateEntries::new(

@@ -7,7 +7,6 @@ use cfx_types::{Address, U256, U512};
 use primitives::{receipt::StorageChange, LogEntry, TransactionWithSignature};
 use solidity_abi::{ABIDecodable, ABIDecodeError};
 use rlp_derive::{RlpDecodable, RlpEncodable};
-use rlp::{Encodable, Decodable, Rlp, RlpStream, DecoderError};
 
 #[derive(Clone, Debug, PartialEq, RlpEncodable, RlpDecodable)]
 pub struct Executed {
@@ -84,18 +83,6 @@ pub enum ToRepackError {
     SenderDoesNotExist,
 }
 
-impl Encodable for ToRepackError {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        unimplemented!()
-    }
-}
-
-impl Decodable for ToRepackError {
-    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        unimplemented!()
-    }
-}
-
 #[derive(Clone, Debug)]
 pub enum TxDropError {
     /// The account nonce in world-state is larger than tx nonce
@@ -105,18 +92,6 @@ pub enum TxDropError {
     /// Although it can be verified in tx packing,
     /// by spec doc, it is checked in execution.
     InvalidRecipientAddress(Address),
-}
-
-impl Encodable for TxDropError {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        unimplemented!()
-    }
-}
-
-impl Decodable for TxDropError {
-    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        unimplemented!()
-    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -138,19 +113,7 @@ pub enum ExecutionError {
     VmError(vm::Error),
 }
 
-impl Encodable for ExecutionError {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        unimplemented!()
-    }
-}
-
-impl Decodable for ExecutionError {
-    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
-        unimplemented!()
-    }
-}
-
-#[derive(Debug)] // TODO: Clone?
+#[derive(Debug)]
 pub enum ExecutionOutcome {
     NotExecutedDrop(TxDropError),
     NotExecutedToReconsiderPacking(ToRepackError),
@@ -160,18 +123,6 @@ pub enum ExecutionOutcome {
 
 impl Clone for ExecutionOutcome {
     fn clone(&self) -> Self {
-        unimplemented!()
-    }
-}
-
-impl Encodable for ExecutionOutcome {
-    fn rlp_append(&self, s: &mut RlpStream) {
-        unimplemented!()
-    }
-}
-
-impl Decodable for ExecutionOutcome {
-    fn decode(rlp: &Rlp) -> Result<Self, DecoderError> {
         unimplemented!()
     }
 }

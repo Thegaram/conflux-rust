@@ -5,74 +5,74 @@
 pub struct ProvingState {
     proof: StateProof,
     root: StateRoot,
-    entries_set: HashMap<Vec<u8>, Box<[u8]>>,
 }
 
 impl ProvingState {
     pub fn new(proof: StateProof, root: StateRoot) -> Self {
-        Self {
-            proof,
-            root,
-            entries_set: Default::default(),
-        }
+        Self { proof, root }
     }
 }
 
 impl StateTrait for ProvingState {
     fn commit(&mut self, epoch_id: EpochId) -> Result<StateRootWithAuxInfo> {
-        unimplemented!();
+        bail!("ProvingState is read-only; unexpected call: commit({:?})", epoch_id);
     }
 
     fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {
-        unimplemented!();
+        bail!("Unexpected call on ProvingState: compute_state_root()");
     }
 
     fn delete(&mut self, access_key: StorageKey) -> Result<()> {
-        unimplemented!();
+        bail!("ProvingState is read-only; unexpected call: delete({:?})", access_key);
     }
 
     fn delete_all<AM: access_mode::AccessMode>(&mut self, access_key_prefix: StorageKey) -> Result<Option<Vec<MptKeyValue>>> {
-        unimplemented!();
+        trace!("ProvingState::delete_all<{}>({:?})", AM::is_read_only(), access_key_prefix);
+
+        if !AM::is_read_only() {
+            bail!("ProvingState is read-only; unexpected call: delete_all<Write>({:?})", access_key_prefix);
+        }
+
+        match self.proof.traverse(access_key_prefix, &self.root, None) { // TODO
+            (false, _) => bail!("Call failed on ProvingState: delete_all({:?})", access_key_prefix), // TODO
+            (true, kvs) if kvs.is_empty() => Ok(None),
+            (true, kvs) => Ok(Some(kvs)),
+        }
     }
 
     fn delete_test_only(&mut self, access_key: StorageKey) -> Result<Option<Box<[u8]>>> {
-        unimplemented!();
+        bail!("Unexpected call on ProvingState: delete_test_only({:?})", access_key);
     }
 
     fn get(&self, access_key: StorageKey) -> Result<Option<Box<[u8]>>> {
-        trace!("!!!!!!!! proving state get key {:?}", access_key);
+        trace!("ProvingState::get({:?})", access_key);
 
-        match self.entries_set.get(&access_key.to_key_bytes()) {
-            Some(x) => Ok(Some(x.clone())),
-            None => {
-                match self.proof.get_value(access_key, &self.root, None) {
-                    (false, _) => bail!("Cannot find key {:?}", access_key), // TODO
-                    (true, None) => Ok(None),
-                    (true, Some(v)) => Ok(Some(v.to_vec().into_boxed_slice())), // TODO
-                }
-            }
+        match self.proof.get_value(access_key, &self.root, None) {
+            (false, _) => bail!("Call failed on ProvingState: get({:?})", access_key), // TODO
+            (true, None) => Ok(None),
+            (true, Some(v)) => Ok(Some(v.to_vec().into_boxed_slice())), // TODO
         }
     }
 
     fn get_node_merkle_all_versions<WithProof: StaticBool>(&self, access_key: StorageKey) -> Result<(NodeMerkleTriplet, NodeMerkleProof)> {
-        unimplemented!();
+        bail!("Unexpected call on ProvingState: get_node_merkle_all_versions({:?})", access_key);
     }
 
     fn get_state_root(&self) -> Result<StateRootWithAuxInfo> {
-        unimplemented!();
+        bail!("Unexpected call on ProvingState: get_state_root()");
     }
 
     fn get_with_proof(&self, access_key: StorageKey) -> Result<(Option<Box<[u8]>>, StateProof)> {
-        unimplemented!();
+        bail!("Unexpected call on ProvingState: get_with_proof({:?})", access_key);
     }
 
     fn revert(&mut self) {
-        unimplemented!();
+        // bail!("ProvingState is read-only; unexpected call: revert()");
+        unimplemented!()
     }
 
     fn set(&mut self, access_key: StorageKey, value: Box<[u8]>) -> Result<()> {
-        self.entries_set.insert(access_key.to_key_bytes(), value);
-        Ok(())
+        bail!("ProvingState is read-only; unexpected call: set({:?}, {:?})", access_key, value);
     }
 }
 
@@ -87,4 +87,3 @@ use crate::{
 };
 use cfx_internal_common::StateRootWithAuxInfo;
 use primitives::{EpochId, NodeMerkleTriplet, StaticBool, StateRoot, StorageKey};
-use std::collections::HashMap;
