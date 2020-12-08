@@ -6,7 +6,6 @@ use cfx_types::{H160, H256, H520, U128, U256, U64};
 use cfxcore::{
     block_data_manager::BlockDataManager,
     consensus_parameters::ONE_GDRIP_IN_DRIP,
-    executive::ExecutionOutcome,
     light_protocol::{query_service::TxInfo, Error as LightError, ErrorKind},
     rpc_errors::{account_result_to_rpc_result, invalid_params_check},
     ConsensusGraph, LightQueryService, PeerInfo, SharedConsensusGraph,
@@ -939,13 +938,7 @@ impl RpcImpl {
                 .map_err(|e| e.to_string())
                 .map_err(RpcError::invalid_params)?;
 
-            match outcome {
-                ExecutionOutcome::Finished(executed) => {
-                    Ok(executed.output.into())
-                }
-                x => Err(format!("Execution error: {:?}", x))
-                    .map_err(RpcError::invalid_params)?, // TODO
-            }
+            common::execution_outcome_to_jsonrpc_result(outcome)
         };
 
         Box::new(fut.boxed().compat())

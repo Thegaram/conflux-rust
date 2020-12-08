@@ -845,40 +845,8 @@ impl RpcImpl {
             request, epoch
         );
 
-        match self.exec_transaction(request, epoch)? {
-            ExecutionOutcome::NotExecutedDrop(TxDropError::OldNonce(expected, got)) => {
-                bail!(call_execution_error(
-                    "Transaction can not be executed".into(),
-                    format! {"nonce is too old expected {:?} got {:?}", expected, got}.into_bytes()
-                ))
-            }
-            ExecutionOutcome::NotExecutedDrop(TxDropError::InvalidRecipientAddress(recipient)) => {
-                bail!(call_execution_error(
-                    "Transaction can not be executed".into(),
-                    format! {"invalid recipient address {:?}", recipient}.into_bytes()
-                ))
-            }
-            ExecutionOutcome::NotExecutedToReconsiderPacking(e) => {
-                bail!(call_execution_error(
-                    "Transaction can not be executed".into(),
-                    format! {"{:?}", e}.into_bytes()
-                ))
-            }
-            ExecutionOutcome::ExecutionErrorBumpNonce(
-                ExecutionError::VmError(vm::Error::Reverted),
-                executed,
-            ) => bail!(call_execution_error(
-                "Transaction reverted".into(),
-                executed.output
-            )),
-            ExecutionOutcome::ExecutionErrorBumpNonce(e, _) => {
-                bail!(call_execution_error(
-                    "Transaction execution failed".into(),
-                    format! {"{:?}", e}.into_bytes()
-                ))
-            }
-            ExecutionOutcome::Finished(executed) => Ok(executed.output.into()),
-        }
+        let outcome = self.exec_transaction(request, epoch)?;
+        Ok(common::execution_outcome_to_jsonrpc_result(outcome)?)
     }
 
     fn estimate_gas_and_collateral(

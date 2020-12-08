@@ -3,6 +3,7 @@
 // See http://www.gnu.org/licenses/
 
 use crate::rpc::{
+    error_codes::call_execution_error,
     types::{
         Block as RpcBlock, BlockHashOrEpochNumber, Bytes,
         CheckBalanceAgainstTransactionResponse, EpochNumber,
@@ -17,7 +18,8 @@ use cfx_parameters::{
 };
 use cfx_types::{Address, H160, H256, H520, U128, U256, U512, U64};
 use cfxcore::{
-    BlockDataManager, ConsensusGraph, ConsensusGraphTrait, PeerInfo,
+    executive::{ExecutionError, ExecutionOutcome, TxDropError},
+    vm, BlockDataManager, ConsensusGraph, ConsensusGraphTrait, PeerInfo,
     SharedConsensusGraph, SharedTransactionPool,
 };
 use cfxcore_accounts::AccountProvider;
@@ -127,6 +129,47 @@ pub fn check_balance_against_transaction(
         will_pay_tx_fee,
         will_pay_collateral,
         is_balance_enough,
+    }
+}
+
+pub fn execution_outcome_to_jsonrpc_result(
+    outcome: ExecutionOutcome,
+) -> JsonRpcResult<Bytes> {
+    match outcome {
+        ExecutionOutcome::NotExecutedDrop(TxDropError::OldNonce(
+            expected,
+            got,
+        )) => bail!(call_execution_error(
+            "Transaction can not be executed".into(),
+            format! {"nonce is too old expected {:?} got {:?}", expected, got}
+                .into_bytes()
+        )),
+        ExecutionOutcome::NotExecutedDrop(
+            TxDropError::InvalidRecipientAddress(recipient),
+        ) => bail!(call_execution_error(
+            "Transaction can not be executed".into(),
+            format! {"invalid recipient address {:?}", recipient}.into_bytes()
+        )),
+        ExecutionOutcome::NotExecutedToReconsiderPacking(e) => {
+            bail!(call_execution_error(
+                "Transaction can not be executed".into(),
+                format! {"{:?}", e}.into_bytes()
+            ))
+        }
+        ExecutionOutcome::ExecutionErrorBumpNonce(
+            ExecutionError::VmError(vm::Error::Reverted),
+            executed,
+        ) => bail!(call_execution_error(
+            "Transaction reverted".into(),
+            executed.output
+        )),
+        ExecutionOutcome::ExecutionErrorBumpNonce(e, _) => {
+            bail!(call_execution_error(
+                "Transaction execution failed".into(),
+                format! {"{:?}", e}.into_bytes()
+            ))
+        }
+        ExecutionOutcome::Finished(executed) => Ok(executed.output.into()),
     }
 }
 
