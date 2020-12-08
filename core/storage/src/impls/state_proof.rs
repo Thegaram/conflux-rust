@@ -37,38 +37,6 @@ impl StateProof {
         self
     }
 
-    // TODO
-    pub fn merge(self, other: StateProof) -> Result<StateProof, Error> {
-        let mut proof = StateProof::default();
-
-        proof.with_delta(match (self.delta_proof, other.delta_proof) {
-            (Some(p1), Some(p2)) => Some(p1.merge(p2)?),
-            (Some(p1), None) => Some(p1),
-            (None, Some(p2)) => Some(p2),
-            (None, None) => None,
-        });
-
-        proof.with_intermediate(
-            match (self.intermediate_proof, other.intermediate_proof) {
-                (Some(p1), Some(p2)) => Some(p1.merge(p2)?),
-                (Some(p1), None) => Some(p1),
-                (None, Some(p2)) => Some(p2),
-                (None, None) => None,
-            },
-        );
-
-        proof.with_snapshot(
-            match (self.snapshot_proof, other.snapshot_proof) {
-                (Some(p1), Some(p2)) => Some(p1.merge(p2)?),
-                (Some(p1), None) => Some(p1),
-                (None, Some(p2)) => Some(p2),
-                (None, None) => None,
-            },
-        );
-
-        Ok(proof)
-    }
-
     pub fn is_valid_kv(
         &self, key: &Vec<u8>, value: Option<&[u8]>, root: StateRoot,
         maybe_intermediate_padding: Option<DeltaMptKeyPadding>,
@@ -357,10 +325,7 @@ impl StateProof {
     }
 }
 
-use crate::impls::{
-    errors::Error,
-    merkle_patricia_trie::{MptKeyValue, TrieProof},
-};
+use crate::impls::merkle_patricia_trie::{MptKeyValue, TrieProof};
 use primitives::{
     CheckInput, DeltaMptKeyPadding, MptValue, StateRoot, StorageKey,
     MERKLE_NULL_NODE,

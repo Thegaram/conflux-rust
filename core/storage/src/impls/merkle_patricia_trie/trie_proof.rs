@@ -111,16 +111,6 @@ impl TrieProof {
         })
     }
 
-    // TODO: do in place?
-    pub fn merge(self, other: TrieProof) -> Result<TrieProof> {
-        let TrieProof { mut nodes, .. } = self;
-        let TrieProof {
-            nodes: other_nodes, ..
-        } = other;
-        nodes.extend(other_nodes.into_iter());
-        TrieProof::new(nodes)
-    }
-
     pub fn get_merkle_root(&self) -> &MerkleHash {
         match self.nodes.get(0) {
             None => &MERKLE_NULL_NODE,
@@ -369,7 +359,11 @@ impl TrieProof {
     #[inline]
     pub fn number_leaf_nodes(&self) -> u32 { self.number_leaf_nodes }
 
+    #[inline]
     pub fn get_proof_nodes(&self) -> &Vec<TrieProofNode> { &self.nodes }
+
+    #[inline]
+    pub fn into_proof_nodes(self) -> Vec<TrieProofNode> { self.nodes }
 
     /// Returns the (snapshot_mpt_key, child_index, trie_node) along the proof
     /// path of key.

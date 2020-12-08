@@ -1856,7 +1856,11 @@ impl ConsensusExecutionHandler {
         let r = ex.transact_virtual(tx);
 
         let storage = state.drop().drop();
-        let proof = storage.extract_proof();
+
+        let proof = storage
+            .try_into_proof()
+            .expect("Found inconsistencies in the recorded proof");
+
         warn!("!!!!!!!!!!!! proof = {:?}", proof);
         // let proof = Default::default();
 

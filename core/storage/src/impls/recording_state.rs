@@ -4,21 +4,25 @@
 
 pub struct RecordingState<Storage: StateTrait> {
     storage: Storage,
-    proof_in_progress: parking_lot::Mutex<StateProof>,
+
+    // Note: we need interior mutability so that we can record accesses and we
+    // need to use Mutex for this as State implementations need to be Send and
+    // Sync. However, the current execution logic is single-threaded.
+    proof_merger: Mutex<StateProofMerger>,
 }
 
 impl<Storage: StateTrait> RecordingState<Storage> {
     pub fn new(storage: Storage) -> Self {
         Self {
             storage,
-            proof_in_progress: Default::default(),
+            proof_merger: Default::default(),
         }
     }
 
-    pub fn extract_proof(&self) -> StateProof {
-        let mut empty = StateProof::default();
-        std::mem::swap(&mut empty, &mut *self.proof_in_progress.lock());
-        empty
+    pub fn try_into_proof(self) -> Result<StateProof> {
+        let mut merger = StateProofMerger::default();
+        std::mem::swap(&mut merger, &mut *self.proof_merger.lock());
+        merger.finish()
     }
 }
 
@@ -47,19 +51,7 @@ impl<Storage: StateTrait> StateTrait for RecordingState<Storage> {
     // we need to record `get` operations
     fn get(&self, access_key: StorageKey) -> Result<Option<Box<[u8]>>> {
         let (val, proof) = self.storage.get_with_proof(access_key)?;
-
-        trace!(
-            "!!!!!!!! recording state get key StorageKey {:?} --> {:?}",
-            access_key,
-            val
-        );
-
-        let mut proof_in_progress = self.proof_in_progress.lock();
-        *proof_in_progress = proof_in_progress
-            .clone()
-            .merge(proof)
-            .expect("proof is valid"); // TODO: do not clone and handle error properly
-
+        self.proof_merger.lock().merge(proof);
         Ok(val)
     }
 
@@ -67,23 +59,17 @@ impl<Storage: StateTrait> StateTrait for RecordingState<Storage> {
     fn delete_all<AM: access_mode::AccessMode>(
         &mut self, access_key_prefix: StorageKey,
     ) -> Result<Option<Vec<MptKeyValue>>> {
-        // TODO: add this to proof?
-        // is it very expensive?
         let kvs = match self.storage.delete_all::<AM>(access_key_prefix)? {
             None => return Ok(None),
             Some(kvs) => kvs,
         };
 
-        let mut proof_in_progress = self.proof_in_progress.lock();
+        let mut proof_merger = self.proof_merger.lock();
 
         for (k, _) in &kvs {
             let access_key = StorageKey::from_key_bytes::<CheckInput>(k)?;
             let (_, proof) = self.storage.get_with_proof(access_key)?;
-
-            *proof_in_progress = proof_in_progress
-                .clone()
-                .merge(proof)
-                .expect("proof is valid"); // TODO: do not clone and handle error properly
+            proof_merger.merge(proof);
         }
 
         Ok(Some(kvs))
@@ -97,9 +83,11 @@ use crate::{
     },
     state::*,
     utils::access_mode,
+    StateProofMerger,
 };
 use cfx_internal_common::StateRootWithAuxInfo;
 use delegate::delegate;
+use parking_lot::Mutex;
 use primitives::{
     CheckInput, EpochId, NodeMerkleTriplet, StaticBool, StorageKey,
 };
