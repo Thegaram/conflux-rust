@@ -48,7 +48,11 @@ impl<Storage: StateTrait> StateTrait for RecordingState<Storage> {
     fn get(&self, access_key: StorageKey) -> Result<Option<Box<[u8]>>> {
         let (val, proof) = self.storage.get_with_proof(access_key)?;
 
-        trace!("!!!!!!!! recording state get key StorageKey {:?} --> {:?}", access_key, val);
+        trace!(
+            "!!!!!!!! recording state get key StorageKey {:?} --> {:?}",
+            access_key,
+            val
+        );
 
         let mut proof_in_progress = self.proof_in_progress.lock();
         *proof_in_progress = proof_in_progress
@@ -96,4 +100,6 @@ use crate::{
 };
 use cfx_internal_common::StateRootWithAuxInfo;
 use delegate::delegate;
-use primitives::{EpochId, NodeMerkleTriplet, StaticBool, StorageKey, CheckInput};
+use primitives::{
+    CheckInput, EpochId, NodeMerkleTriplet, StaticBool, StorageKey,
+};

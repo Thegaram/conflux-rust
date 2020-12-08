@@ -4,6 +4,7 @@
 
 use crate::{
     consensus::SharedConsensusGraph,
+    executive::ExecutionOutcome,
     light_protocol::{
         common::{FullPeerFilter, LedgerInfo},
         handler::sync::TxInfoValidated,
@@ -15,7 +16,6 @@ use crate::{
     state::COMMISSION_PRIVILEGE_SPECIAL_KEY,
     sync::SynchronizationGraph,
     ConsensusGraph, Notifications,
-    executive::ExecutionOutcome,
 };
 use cfx_parameters::{
     consensus::DEFERRED_STATE_EPOCH_COUNT,

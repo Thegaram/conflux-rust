@@ -160,7 +160,11 @@ impl StateProof {
         }
     }
 
-    pub fn get_value(&self, storage_key: StorageKey, state_root: &StateRoot, maybe_intermediate_padding: &Option<DeltaMptKeyPadding>) -> (bool, Option<&[u8]>) {
+    pub fn get_value(
+        &self, storage_key: StorageKey, state_root: &StateRoot,
+        maybe_intermediate_padding: &Option<DeltaMptKeyPadding>,
+    ) -> (bool, Option<&[u8]>)
+    {
         let delta_root = &state_root.delta_root;
         let intermediate_root = &state_root.intermediate_delta_root;
         let snapshot_root = &state_root.snapshot_root;
@@ -237,8 +241,10 @@ impl StateProof {
     }
 
     pub fn traverse(
-        &self, storage_key_prefix: StorageKey, root: &StateRoot, maybe_intermediate_padding: &Option<DeltaMptKeyPadding>
-    ) -> (bool, Vec<MptKeyValue>) {
+        &self, storage_key_prefix: StorageKey, root: &StateRoot,
+        maybe_intermediate_padding: &Option<DeltaMptKeyPadding>,
+    ) -> (bool, Vec<MptKeyValue>)
+    {
         let delta_root = &root.delta_root;
         let intermediate_root = &root.intermediate_delta_root;
         let snapshot_root = &root.snapshot_root;
@@ -351,7 +357,10 @@ impl StateProof {
     }
 }
 
-use crate::impls::{merkle_patricia_trie::{TrieProof, MptKeyValue}, errors::Error};
+use crate::impls::{
+    errors::Error,
+    merkle_patricia_trie::{MptKeyValue, TrieProof},
+};
 use primitives::{
     CheckInput, DeltaMptKeyPadding, MptValue, StateRoot, StorageKey,
     MERKLE_NULL_NODE,

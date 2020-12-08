@@ -4,9 +4,9 @@
 
 use cfx_types::{H160, H256, H520, U128, U256, U64};
 use cfxcore::{
-    executive::ExecutionOutcome,
     block_data_manager::BlockDataManager,
     consensus_parameters::ONE_GDRIP_IN_DRIP,
+    executive::ExecutionOutcome,
     light_protocol::{query_service::TxInfo, Error as LightError, ErrorKind},
     rpc_errors::{account_result_to_rpc_result, invalid_params_check},
     ConsensusGraph, LightQueryService, PeerInfo, SharedConsensusGraph,
@@ -914,10 +914,15 @@ impl RpcImpl {
         Box::new(fut.boxed().compat())
     }
 
-    fn call(&self, request: CallRequest, epoch: Option<EpochNumber>) -> BoxFuture<Bytes> {
+    fn call(
+        &self, request: CallRequest, epoch: Option<EpochNumber>,
+    ) -> BoxFuture<Bytes> {
         let epoch = epoch.unwrap_or(EpochNumber::LatestState).into();
 
-        info!("RPC Request: cfx_call request={:?} epoch={:?}", request, epoch);
+        info!(
+            "RPC Request: cfx_call request={:?} epoch={:?}",
+            request, epoch
+        );
 
         let epoch_height = self.consensus.best_epoch_number();
         let chain_id = self.consensus.best_chain_id();
@@ -928,13 +933,18 @@ impl RpcImpl {
         let light = self.light.clone();
 
         let fut = async move {
-            let outcome = light.call_virtual(signed_tx, epoch).await
+            let outcome = light
+                .call_virtual(signed_tx, epoch)
+                .await
                 .map_err(|e| e.to_string())
                 .map_err(RpcError::invalid_params)?;
 
             match outcome {
-                ExecutionOutcome::Finished(executed) => Ok(executed.output.into()),
-                x => Err(format!("Execution error: {:?}", x)).map_err(RpcError::invalid_params)?, // TODO
+                ExecutionOutcome::Finished(executed) => {
+                    Ok(executed.output.into())
+                }
+                x => Err(format!("Execution error: {:?}", x))
+                    .map_err(RpcError::invalid_params)?, // TODO
             }
         };
 

@@ -5,33 +5,35 @@
 extern crate lru_time_cache;
 
 use lru_time_cache::LruCache;
-use parking_lot::{RwLock, Mutex};
+use parking_lot::{Mutex, RwLock};
 use std::{future::Future, sync::Arc};
 
 use super::{
-    common::{FutureItem, TimeOrdered, PendingItem, SyncManager},
+    common::{FutureItem, PendingItem, SyncManager, TimeOrdered},
     state_roots::StateRoots,
 };
 use crate::{
-    consensus::{SharedConsensusGraph, ConsensusGraph},
+    consensus::{ConsensusGraph, SharedConsensusGraph},
+    executive::ExecutionOutcome,
     light_protocol::{
         common::{FullPeerState, Peers},
         error::*,
-        message::{msgid, CallTransactions, CallKey, CallResultWithKey, CallResultProof},
+        message::{
+            msgid, CallKey, CallResultProof, CallResultWithKey,
+            CallTransactions,
+        },
     },
     message::{Message, RequestId},
     UniqueId,
-    executive::ExecutionOutcome,
 };
 use cfx_parameters::light::{
     BLOOM_REQUEST_BATCH_SIZE, BLOOM_REQUEST_TIMEOUT, CACHE_TIMEOUT,
     MAX_BLOOMS_IN_FLIGHT,
 };
+use cfx_storage::ProvingState;
 use futures::future::FutureExt;
 use network::{node_table::NodeId, NetworkContext};
-use primitives::{SignedTransaction};
-use primitives::StorageKey;
-use cfx_storage::ProvingState;
+use primitives::{SignedTransaction, StorageKey};
 
 fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
     use std::hash::Hasher;
@@ -83,7 +85,8 @@ pub struct Calls {
 
 impl Calls {
     pub fn new(
-        consensus: SharedConsensusGraph, peers: Arc<Peers<FullPeerState>>, state_roots: Arc<StateRoots>, request_id_allocator: Arc<UniqueId>,
+        consensus: SharedConsensusGraph, peers: Arc<Peers<FullPeerState>>,
+        state_roots: Arc<StateRoots>, request_id_allocator: Arc<UniqueId>,
     ) -> Self
     {
         let sync_manager = SyncManager::new(peers, msgid::CALL_TRANSACTIONS);
@@ -120,7 +123,11 @@ impl Calls {
         let key = CallKey { tx, epoch };
 
         if !verified.contains_key(&key) {
-            trace!("!!!!!!!!! requesting now; tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
+            trace!(
+                "!!!!!!!!! requesting now; tx hash = {:?}, key hash = {:?}!",
+                key.tx.hash(),
+                calculate_hash(&key)
+            );
             let missing = std::iter::once(MissingCallResult::new(key.clone()));
 
             self.sync_manager.request_now(missing, |peer, keys| {
@@ -167,8 +174,8 @@ impl Calls {
             match self.sync_manager.check_if_requested(peer, id, &key)? {
                 None => {
                     trace!("!!!!!!!!! request not found; tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
-                    continue
-                },
+                    continue;
+                }
                 Some(_) => self.validate_and_store(key, proof)?,
             };
         }
@@ -177,7 +184,9 @@ impl Calls {
     }
 
     #[inline]
-    pub fn validate_and_store(&self, key: CallKey, proof: CallResultProof) -> Result<()> {
+    pub fn validate_and_store(
+        &self, key: CallKey, proof: CallResultProof,
+    ) -> Result<()> {
         // validate call result
         match self.execute_call(&key.tx, key.epoch, proof) {
             Err(e) => {
@@ -247,7 +256,7 @@ impl Calls {
     #[inline]
     pub fn sync(&self, io: &dyn NetworkContext) {
         self.sync_manager.sync(
-            MAX_BLOOMS_IN_FLIGHT, // TODO
+            MAX_BLOOMS_IN_FLIGHT,     // TODO
             BLOOM_REQUEST_BATCH_SIZE, // TODO
             |peer, epochs| self.send_request(io, peer, epochs),
         );
@@ -255,23 +264,20 @@ impl Calls {
 
     #[inline]
     fn execute_call(
-        &self, tx: &SignedTransaction, epoch: u64,
-        proof: CallResultProof,
-    ) -> Result<ExecutionOutcome>
-    {
+        &self, tx: &SignedTransaction, epoch: u64, proof: CallResultProof,
+    ) -> Result<ExecutionOutcome> {
         // validate state root
         let state_root = proof.state_root;
 
         trace!("!!!!!!!!! validating state root");
 
-        self.state_roots
-            .validate_state_root(epoch, &state_root)?;
-            // .chain_err(|| ErrorKind::InvalidStateProof {
-            //     epoch,
-            //     key: key.clone(),
-            //     value: value.clone(),
-            //     reason: "Validation of current state root failed",
-            // })?;
+        self.state_roots.validate_state_root(epoch, &state_root)?;
+        // .chain_err(|| ErrorKind::InvalidStateProof {
+        //     epoch,
+        //     key: key.clone(),
+        //     value: value.clone(),
+        //     reason: "Validation of current state root failed",
+        // })?;
 
         // validate previous state root
         let maybe_prev_root = proof.prev_snapshot_state_root;
@@ -280,12 +286,12 @@ impl Calls {
 
         self.state_roots
             .validate_prev_snapshot_state_root(epoch, &maybe_prev_root)?;
-            // .chain_err(|| ErrorKind::InvalidStateProof {
-            //     epoch,
-            //     key: key.clone(),
-            //     value: value.clone(),
-            //     reason: "Validation of previous state root failed",
-            // })?;
+        // .chain_err(|| ErrorKind::InvalidStateProof {
+        //     epoch,
+        //     key: key.clone(),
+        //     value: value.clone(),
+        //     reason: "Validation of previous state root failed",
+        // })?;
 
         // construct padding
         let maybe_intermediate_padding = maybe_prev_root.map(|root| {
@@ -295,27 +301,37 @@ impl Calls {
             )
         });
 
-        let consensus = self.consensus
+        let consensus = self
+            .consensus
             .as_any()
             .downcast_ref::<ConsensusGraph>()
             .expect("downcast should succeed");
-            // .call_virtual_with_proof(&key.tx, primitives::EpochNumber::Number(key.epoch))
+        // .call_virtual_with_proof(&key.tx,
+        // primitives::EpochNumber::Number(key.epoch))
 
         // TODO: re-execute on state proof
         // ...
 
         trace!("!!!!!!!!! calling virtual on proof");
 
-        let state = ProvingState::new(proof.execution_proof, state_root, maybe_intermediate_padding);
+        let state = ProvingState::new(
+            proof.execution_proof,
+            state_root,
+            maybe_intermediate_padding,
+        );
 
         let outcome = consensus
-            .call_virtual_on_proof(tx, primitives::EpochNumber::Number(epoch), state) // TODO: pass intermediate_padding
+            .call_virtual_on_proof(
+                tx,
+                primitives::EpochNumber::Number(epoch),
+                state,
+            ) // TODO: pass intermediate_padding
             .map_err(|e| e.to_string())?; // TODO
 
         trace!("!!!!!!!!! calling virtual on proof finished");
 
-
-        // tx: &SignedTransaction, epoch: EpochNumber, proof: StateProof, root: StateRoot,
+        // tx: &SignedTransaction, epoch: EpochNumber, proof: StateProof, root:
+        // StateRoot,
 
         Ok(outcome)
     }

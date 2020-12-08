@@ -840,7 +840,10 @@ impl RpcImpl {
     fn call(
         &self, request: CallRequest, epoch: Option<EpochNumber>,
     ) -> RpcResult<Bytes> {
-        info!("RPC Request: cfx_call request={:?} epoch={:?}", request, epoch);
+        info!(
+            "RPC Request: cfx_call request={:?} epoch={:?}",
+            request, epoch
+        );
 
         match self.exec_transaction(request, epoch)? {
             ExecutionOutcome::NotExecutedDrop(TxDropError::OldNonce(expected, got)) => {

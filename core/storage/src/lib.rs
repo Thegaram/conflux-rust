@@ -163,6 +163,8 @@ pub use self::{
             simple_mpt::*, KVInserter, MptKeyValue, TrieProof,
         },
         node_merkle_proof::{NodeMerkleProof, StorageRootProof},
+        proving_state::ProvingState,
+        recording_state::RecordingState,
         snapshot_sync::{FullSyncVerifier, MptSlicer},
         state_proof::StateProof,
         storage_db::{
@@ -171,8 +173,6 @@ pub use self::{
             snapshot_db_manager_sqlite::SnapshotDbManagerSqlite,
             sqlite::SqliteConnection,
         },
-        recording_state::RecordingState,
-        proving_state::ProvingState,
     },
     state::{State as StorageState, StateTrait as StorageStateTrait},
     state_manager::{

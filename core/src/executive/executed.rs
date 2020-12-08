@@ -5,8 +5,8 @@
 use crate::{bytes::Bytes, vm};
 use cfx_types::{Address, U256, U512};
 use primitives::{receipt::StorageChange, LogEntry, TransactionWithSignature};
-use solidity_abi::{ABIDecodable, ABIDecodeError};
 use rlp_derive::{RlpDecodable, RlpEncodable};
+use solidity_abi::{ABIDecodable, ABIDecodeError};
 
 #[derive(Clone, Debug, PartialEq, RlpEncodable, RlpDecodable)]
 pub struct Executed {
@@ -122,9 +122,7 @@ pub enum ExecutionOutcome {
 }
 
 impl Clone for ExecutionOutcome {
-    fn clone(&self) -> Self {
-        unimplemented!()
-    }
+    fn clone(&self) -> Self { unimplemented!() }
 }
 
 impl ExecutionOutcome {

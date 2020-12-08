@@ -15,13 +15,14 @@ use crate::{
             msgid, BlockHashes as GetBlockHashesResponse,
             BlockHeaders as GetBlockHeadersResponse,
             BlockTxs as GetBlockTxsResponse, Blooms as GetBloomsResponse,
-            NewBlockHashes, NodeType, Receipts as GetReceiptsResponse,
-            SendRawTx, StateEntries as GetStateEntriesResponse,
+            CallResults as CallTransactionsResponse, NewBlockHashes, NodeType,
+            Receipts as GetReceiptsResponse, SendRawTx,
+            StateEntries as GetStateEntriesResponse,
             StateRoots as GetStateRootsResponse, StatusPingDeprecatedV1,
             StatusPingV2, StatusPongDeprecatedV1, StatusPongV2,
             StorageRoots as GetStorageRootsResponse,
             TxInfos as GetTxInfosResponse, Txs as GetTxsResponse,
-            WitnessInfo as GetWitnessInfoResponse, CallResults as CallTransactionsResponse,
+            WitnessInfo as GetWitnessInfoResponse,
         },
         LightNodeConfiguration, LIGHT_PROTOCOL_OLD_VERSIONS_TO_SUPPORT,
         LIGHT_PROTOCOL_VERSION, LIGHT_PROTO_V1,
@@ -51,8 +52,8 @@ use std::{
     time::{Duration, Instant},
 };
 use sync::{
-    BlockTxs, Blooms, Epochs, HashSource, Headers, Receipts, StateEntries,
-    StateRoots, StorageRoots, TxInfos, Txs, Witnesses, Calls,
+    BlockTxs, Blooms, Calls, Epochs, HashSource, Headers, Receipts,
+    StateEntries, StateRoots, StorageRoots, TxInfos, Txs, Witnesses,
 };
 use throttling::token_bucket::TokenBucketManager;
 
@@ -692,8 +693,10 @@ impl Handler {
     }
 
     fn on_call_results(
-        &self, io: &dyn NetworkContext, peer: &NodeId, resp: CallTransactionsResponse,
-    ) -> Result<()> {
+        &self, io: &dyn NetworkContext, peer: &NodeId,
+        resp: CallTransactionsResponse,
+    ) -> Result<()>
+    {
         debug!(
             "received {} call results (request id = {})",
             resp.results.len(),
@@ -701,7 +704,8 @@ impl Handler {
         );
         trace!("on_call_results resp={:?}", resp);
 
-        self.calls.receive(peer, resp.request_id, resp.results.into_iter())?;
+        self.calls
+            .receive(peer, resp.request_id, resp.results.into_iter())?;
 
         self.calls.sync(io);
         Ok(())

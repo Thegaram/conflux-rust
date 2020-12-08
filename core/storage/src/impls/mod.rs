@@ -7,14 +7,14 @@ pub(super) mod merkle_patricia_trie;
 pub(super) mod delta_mpt;
 pub(super) mod errors;
 pub(super) mod node_merkle_proof;
+pub(super) mod proving_state;
+pub(super) mod recording_state;
 pub(super) mod snapshot_sync;
 pub(super) mod state;
 pub(super) mod state_manager;
 pub(super) mod state_proof;
 pub(super) mod storage_db;
 pub(super) mod storage_manager;
-pub(super) mod recording_state;
-pub(super) mod proving_state;
 
 pub mod defaults {
     pub use super::delta_mpt::DEFAULT_NODE_MAP_SIZE;

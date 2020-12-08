@@ -265,8 +265,7 @@ impl TrieProof {
 
     pub fn traverse(
         &self, path: &[u8], root: &MerkleHash,
-    ) -> (bool, Vec<MptKeyValue>)
-    {
+    ) -> (bool, Vec<MptKeyValue>) {
         // empty trie
         if root == &MERKLE_NULL_NODE {
             return (true, vec![]);
@@ -323,7 +322,7 @@ impl TrieProof {
         loop {
             let (hash, maybe_child_id, key_prefix) = match queue.pop_front() {
                 None => break,
-                Some(h) => h
+                Some(h) => h,
             };
 
             // visit node
@@ -344,8 +343,8 @@ impl TrieProof {
                 Some(id) => CompressedPathRaw::join_connected_paths(
                     &key_prefix,
                     id,
-                    &node.compressed_path_ref()
-                )
+                    &node.compressed_path_ref(),
+                ),
             };
 
             // store key-value pair if node contains value
@@ -500,9 +499,8 @@ use crate::{
         merkle_patricia_trie::{
             merkle::compute_merkle,
             walk::{TrieNodeWalkTrait, WalkStop},
-            CompressedPathRaw, CompressedPathTrait, TrieNodeTrait,
+            CompressedPathRaw, CompressedPathTrait, MptKeyValue, TrieNodeTrait,
             VanillaChildrenTable, VanillaTrieNode, CHILDREN_COUNT,
-            MptKeyValue,
         },
     },
     utils::access_mode,

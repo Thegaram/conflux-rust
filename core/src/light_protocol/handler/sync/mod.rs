@@ -4,6 +4,7 @@
 
 mod block_txs;
 mod blooms;
+mod calls;
 mod common;
 mod epochs;
 mod headers;
@@ -14,10 +15,10 @@ mod storage_roots;
 mod tx_infos;
 mod txs;
 mod witnesses;
-mod calls;
 
 pub use block_txs::BlockTxs;
 pub use blooms::Blooms;
+pub use calls::Calls;
 pub use epochs::Epochs;
 pub use headers::{HashSource, Headers};
 pub use receipts::Receipts;
@@ -27,4 +28,3 @@ pub use storage_roots::StorageRoots;
 pub use tx_infos::{TxInfoValidated, TxInfos};
 pub use txs::Txs;
 pub use witnesses::Witnesses;
-pub use calls::Calls;

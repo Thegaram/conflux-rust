@@ -13,7 +13,7 @@ use crate::{
     },
     executive::{
         revert_reason_decode, ExecutionError, ExecutionOutcome, Executive,
-        InternalContractMap, TransactOptions, ExecutiveGeneric,
+        ExecutiveGeneric, InternalContractMap, TransactOptions,
     },
     machine::Machine,
     rpc_errors::{invalid_params_check, Result as RpcResult},
@@ -35,9 +35,8 @@ use cfx_internal_common::{
 use cfx_parameters::{consensus::*, consensus_internal::*};
 use cfx_statedb::{Result as DbResult, StateDb, StateDbGeneric};
 use cfx_storage::{
-    defaults::DEFAULT_EXECUTION_PREFETCH_THREADS, StateIndex,
-    StorageManagerTrait,
-    RecordingState, StateProof, ProvingState,
+    defaults::DEFAULT_EXECUTION_PREFETCH_THREADS, ProvingState, RecordingState,
+    StateIndex, StateProof, StorageManagerTrait,
 };
 use cfx_types::{BigEndianHash, H256, KECCAK_EMPTY_BLOOM, U256, U512};
 use core::convert::TryFrom;
@@ -620,13 +619,17 @@ impl ConsensusExecutor {
     pub fn call_virtual_with_proof(
         &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize,
     ) -> RpcResult<(ExecutionOutcome, StateProof)> {
-        self.handler.call_virtual_with_proof(tx, epoch_id, epoch_size)
+        self.handler
+            .call_virtual_with_proof(tx, epoch_id, epoch_size)
     }
 
     pub fn call_virtual_on_proof(
-        &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize, state: ProvingState,
-    ) -> RpcResult<ExecutionOutcome> {
-        self.handler.call_virtual_on_proof(tx, epoch_id, epoch_size, state)
+        &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize,
+        state: ProvingState,
+    ) -> RpcResult<ExecutionOutcome>
+    {
+        self.handler
+            .call_virtual_on_proof(tx, epoch_id, epoch_size, state)
     }
 
     pub fn stop(&self) {
@@ -1768,7 +1771,6 @@ impl ConsensusExecutionHandler {
         Ok(r?)
     }
 
-
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     pub fn call_virtual_with_proof(
         &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize,
@@ -1860,13 +1862,15 @@ impl ConsensusExecutionHandler {
         trace!("Execution result {:?}", r);
         Ok((r?, proof))
     }
-    // !!!!!!!!!!!!!!!!!!!!!!!!!
 
+    // !!!!!!!!!!!!!!!!!!!!!!!!!
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     pub fn call_virtual_on_proof(
-        &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize, state: ProvingState,
-    ) -> RpcResult<ExecutionOutcome> {
+        &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize,
+        state: ProvingState,
+    ) -> RpcResult<ExecutionOutcome>
+    {
         let spec = Spec::new_spec();
         let internal_contract_map = InternalContractMap::new();
         let best_block_header = self.data_man.block_header_by_hash(epoch_id);
@@ -1959,24 +1963,24 @@ impl ConsensusExecutionHandler {
     }
     // !!!!!!!!!!!!!!!!!!!!!!!!!
 
-
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     // pub fn call_virtual_with_proof2(
     //     &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize,
     // ) -> RpcResult<(ExecutionOutcome, StateProof)> {
-    //     let best_block_header = match self.data_man.block_header_by_hash(epoch_id) {
-    //         None => bail!("invalid epoch id"),
-    //         Some(h) => h,
+    //     let best_block_header = match
+    // self.data_man.block_header_by_hash(epoch_id) {         None =>
+    // bail!("invalid epoch id"),         Some(h) => h,
     //     };
 
     //     trace!("best_block_header: {:?}", best_block_header);
 
     //     let block_height = best_block_header.height() + 1;
 
-    //     let start_block_number = match self.data_man.get_epoch_execution_context(epoch_id) {
-    //         Some(v) => v.start_block_number + epoch_size as u64,
-    //         None => bail!("cannot obtain the execution context. Database is potentially corrupted!"),
-    //     };
+    //     let start_block_number = match
+    // self.data_man.get_epoch_execution_context(epoch_id) {         Some(v)
+    // => v.start_block_number + epoch_size as u64,         None =>
+    // bail!("cannot obtain the execution context. Database is potentially
+    // corrupted!"),     };
 
     //     invalid_params_check(
     //         "tx",
@@ -1990,8 +1994,8 @@ impl ConsensusExecutionHandler {
     //     let internal_contract_map = InternalContractMap::new();
     //     let spec = Spec::new_spec();
 
-    //     // Keep the lock until we get the desired State, otherwise the State may
-    //     // expire.
+    //     // Keep the lock until we get the desired State, otherwise the State
+    // may     // expire.
     //     let state_availability_boundary =
     //         self.data_man.state_availability_boundary.read();
     //     if !state_availability_boundary
@@ -2057,15 +2061,12 @@ impl ConsensusExecutionHandler {
     // }
     // !!!!!!!!!!!!!!!!!!!!!!!!!
 
-
-
-
-
     // pub fn call_virtual_with_proof2(
     //     &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize,
     // ) -> RpcResult<(ExecutionOutcome, StateProof)> {
     //     let f = || {
-    //         let state_index = self.data_man.get_state_readonly_index(epoch_id);
+    //         let state_index =
+    // self.data_man.get_state_readonly_index(epoch_id);
 
     //         let state_0 = self
     //             .data_man
@@ -2082,7 +2083,8 @@ impl ConsensusExecutionHandler {
     //         Ok(state_1)
     //     };
 
-    //     let (r, state) = self.call_virtual_with_proof_generic(tx, epoch_id, epoch_size, f)?;
+    //     let (r, state) = self.call_virtual_with_proof_generic(tx, epoch_id,
+    // epoch_size, f)?;
 
     //     let storage = state.drop().drop();
     //     let proof = storage.extract_proof();
@@ -2091,10 +2093,10 @@ impl ConsensusExecutionHandler {
     //     Ok((r, proof))
     // }
 
-
     // // !!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    // pub fn call_virtual_with_proof_generic<S: cfx_storage::StorageStateTrait + Send + Sync + 'static>(
-    //     &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize, s: impl FnOnce() -> Result<S, String>
+    // pub fn call_virtual_with_proof_generic<S: cfx_storage::StorageStateTrait
+    // + Send + Sync + 'static>(     &self, tx: &SignedTransaction,
+    // epoch_id: &H256, epoch_size: usize, s: impl FnOnce() -> Result<S, String>
     // ) -> RpcResult<(ExecutionOutcome, StateGeneric<S>)> {
     //     let spec = Spec::new_spec();
     //     let internal_contract_map = InternalContractMap::new();
@@ -2104,10 +2106,11 @@ impl ConsensusExecutionHandler {
     //     }
     //     let best_block_header = best_block_header.unwrap();
     //     let block_height = best_block_header.height() + 1;
-    //     let start_block_number = match self.data_man.get_epoch_execution_context(epoch_id) {
-    //         Some(v) => v.start_block_number + epoch_size as u64,
-    //         None => bail!("cannot obtain the execution context. Database is potentially corrupted!"),
-    //     };
+    //     let start_block_number = match
+    // self.data_man.get_epoch_execution_context(epoch_id) {         Some(v)
+    // => v.start_block_number + epoch_size as u64,         None =>
+    // bail!("cannot obtain the execution context. Database is potentially
+    // corrupted!"),     };
 
     //     invalid_params_check(
     //         "tx",
@@ -2118,8 +2121,8 @@ impl ConsensusExecutionHandler {
     //         ),
     //     )?;
 
-    //     // Keep the lock until we get the desired State, otherwise the State may
-    //     // expire.
+    //     // Keep the lock until we get the desired State, otherwise the State
+    // may     // expire.
     //     let state_availability_boundary =
     //         self.data_man.state_availability_boundary.read();
     //     if !state_availability_boundary
@@ -2127,9 +2130,10 @@ impl ConsensusExecutionHandler {
     //     {
     //         bail!("state is not ready");
     //     }
-    //     // let state_index = self.data_man.get_state_readonly_index(epoch_id);
-    //     trace!("best_block_header: {:?}", best_block_header);
-    //     let time_stamp = best_block_header.timestamp();
+    //     // let state_index =
+    // self.data_man.get_state_readonly_index(epoch_id);     trace!("
+    // best_block_header: {:?}", best_block_header);     let time_stamp =
+    // best_block_header.timestamp();
 
     //     // let state_0 = self
     //     //     .data_man
@@ -2186,7 +2190,6 @@ impl ConsensusExecutionHandler {
     //     Ok((r?, state))
     // }
     // !!!!!!!!!!!!!!!!!!!!!!!!!
-
 }
 
 pub struct ConsensusExecutionConfiguration {

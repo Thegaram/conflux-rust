@@ -4,7 +4,8 @@
 
 use crate::{
     consensus::{
-        MaybeExecutedTxExtraInfo, SharedConsensusGraph, TransactionInfo, ConsensusGraph,
+        ConsensusGraph, MaybeExecutedTxExtraInfo, SharedConsensusGraph,
+        TransactionInfo,
     },
     light_protocol::{
         common::{
@@ -17,11 +18,13 @@ use crate::{
             msgid, BlockHashes as GetBlockHashesResponse,
             BlockHeaders as GetBlockHeadersResponse,
             BlockTxs as GetBlockTxsResponse, BlockTxsWithHash, BloomWithEpoch,
-            Blooms as GetBloomsResponse, GetBlockHashesByEpoch,
-            GetBlockHeaders, GetBlockTxs, GetBlooms, GetReceipts,
-            GetStateEntries, GetStateRoots, GetStorageRoots, GetTxInfos,
-            GetTxs, GetWitnessInfo, NewBlockHashes, NodeType,
-            Receipts as GetReceiptsResponse, ReceiptsWithEpoch, SendRawTx,
+            Blooms as GetBloomsResponse, CallKey, CallResultProof,
+            CallResultWithKey, CallResults as CallTransactionsResponse,
+            CallTransactions, GetBlockHashesByEpoch, GetBlockHeaders,
+            GetBlockTxs, GetBlooms, GetReceipts, GetStateEntries,
+            GetStateRoots, GetStorageRoots, GetTxInfos, GetTxs, GetWitnessInfo,
+            NewBlockHashes, NodeType, Receipts as GetReceiptsResponse,
+            ReceiptsWithEpoch, SendRawTx,
             StateEntries as GetStateEntriesResponse, StateEntryProof,
             StateEntryWithKey, StateKey, StateRootWithEpoch,
             StateRoots as GetStateRootsResponse, StatusPingDeprecatedV1,
@@ -29,7 +32,7 @@ use crate::{
             StorageRootProof, StorageRootWithKey,
             StorageRoots as GetStorageRootsResponse, TxInfo,
             TxInfos as GetTxInfosResponse, Txs as GetTxsResponse,
-            WitnessInfo as GetWitnessInfoResponse, CallTransactions, CallResults as CallTransactionsResponse, CallKey, CallResultWithKey, CallResultProof,
+            WitnessInfo as GetWitnessInfoResponse,
         },
         LIGHT_PROTOCOL_ID, LIGHT_PROTOCOL_OLD_VERSIONS_TO_SUPPORT,
         LIGHT_PROTOCOL_VERSION, LIGHT_PROTO_V1,
@@ -901,11 +904,15 @@ impl Provider {
         };
 
         // execution proof
-        let (_, execution_proof) = self.consensus
+        let (_, execution_proof) = self
+            .consensus
             .as_any()
             .downcast_ref::<ConsensusGraph>()
             .expect("downcast should succeed")
-            .call_virtual_with_proof(&key.tx, primitives::EpochNumber::Number(key.epoch))
+            .call_virtual_with_proof(
+                &key.tx,
+                primitives::EpochNumber::Number(key.epoch),
+            )
             .map_err(|e| e.to_string())?; // TODO
 
         let proof = CallResultProof {
@@ -941,8 +948,10 @@ impl Provider {
 
         trace!("call transaction results: {:?}", results);
 
-        let msg: Box<dyn Message> =
-            Box::new(CallTransactionsResponse { request_id, results });
+        let msg: Box<dyn Message> = Box::new(CallTransactionsResponse {
+            request_id,
+            results,
+        });
 
         msg.send(io, peer)?;
         Ok(())

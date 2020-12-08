@@ -316,18 +316,7 @@ pub struct StorageRoots {
     pub roots: Vec<StorageRootWithKey>,
 }
 
-#[derive(
-    Clone,
-    Debug,
-    //Default,
-    // PartialEq,
-    Eq,
-    //PartialOrd, // DO NOT DERIVE!
-    //Ord,
-    Hash,
-    RlpEncodable,
-    RlpDecodable,
-)]
+#[derive(Clone, Debug, Eq, Hash, RlpEncodable, RlpDecodable)]
 pub struct CallKey {
     pub tx: SignedTransaction,
     pub epoch: u64,
@@ -341,7 +330,12 @@ impl PartialEq for CallKey {
 
 // TODO: compare hash?
 impl Ord for CallKey {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering { self.tx.hash().cmp(&other.tx.hash()).then(self.epoch.cmp(&other.epoch)) }
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.tx
+            .hash()
+            .cmp(&other.tx.hash())
+            .then(self.epoch.cmp(&other.epoch))
+    }
 }
 
 impl PartialOrd for CallKey {

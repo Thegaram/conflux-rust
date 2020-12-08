@@ -67,8 +67,7 @@ impl BlockTxs {
     ) -> Self
     {
         let ledger = LedgerInfo::new(consensus.clone());
-        let sync_manager =
-            SyncManager::new(peers, msgid::GET_BLOCK_TXS);
+        let sync_manager = SyncManager::new(peers, msgid::GET_BLOCK_TXS);
 
         let cache = LruCache::with_expiry_duration(*CACHE_TIMEOUT);
         let verified = Arc::new(RwLock::new(cache));

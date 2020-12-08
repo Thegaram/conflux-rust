@@ -88,8 +88,7 @@ impl Witnesses {
         let height_of_latest_verified_header = RwLock::new(0);
         let in_flight = RwLock::new(HashSet::new());
         let ledger = LedgerInfo::new(consensus);
-        let sync_manager =
-            SyncManager::new(peers, msgid::GET_WITNESS_INFO);
+        let sync_manager = SyncManager::new(peers, msgid::GET_WITNESS_INFO);
 
         Witnesses {
             data_man,
