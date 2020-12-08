@@ -42,7 +42,6 @@ pub trait StateTrait {
     fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo>;
     fn get_state_root(&self) -> Result<StateRootWithAuxInfo>;
     fn commit(&mut self, epoch: EpochId) -> Result<StateRootWithAuxInfo>;
-    fn revert(&mut self);
 
     /// Compute the merkle of the node under `access_key` in all tries.
     /// Node merkle is computed on the value and children hashes, ignoring the

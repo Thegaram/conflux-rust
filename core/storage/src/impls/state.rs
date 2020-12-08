@@ -632,19 +632,6 @@ impl StateTrait for State {
 
         Ok(self.state_root(merkle_root))
     }
-
-    fn revert(&mut self) {
-        self.dirty = false;
-
-        // Free all modified nodes.
-        let owned_node_set = self.owned_node_set.as_ref().unwrap();
-        for owned_node in owned_node_set {
-            self.delta_trie.get_node_memory_manager().free_owned_node(
-                &mut owned_node.clone(),
-                self.delta_trie.get_mpt_id(),
-            );
-        }
-    }
 }
 
 impl State {
@@ -883,6 +870,19 @@ impl State {
         };
 
         inserter.iterate(dumper)
+    }
+
+    fn revert(&mut self) {
+        self.dirty = false;
+
+        // Free all modified nodes.
+        let owned_node_set = self.owned_node_set.as_ref().unwrap();
+        for owned_node in owned_node_set {
+            self.delta_trie.get_node_memory_manager().free_owned_node(
+                &mut owned_node.clone(),
+                self.delta_trie.get_mpt_id(),
+            );
+        }
     }
 }
 

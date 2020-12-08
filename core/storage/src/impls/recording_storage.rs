@@ -36,7 +36,6 @@ impl<Storage: StateTrait> StateTrait for RecordingStorage<Storage> {
             fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo>;
             fn get_state_root(&self) -> Result<StateRootWithAuxInfo>;
             fn commit(&mut self, epoch_id: EpochId) -> Result<StateRootWithAuxInfo>;
-            fn revert(&mut self);
         }
     }
 

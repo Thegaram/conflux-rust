@@ -112,11 +112,6 @@ impl StateTrait for ProofStorage {
         );
     }
 
-    fn revert(&mut self) {
-        // bail!("ProvingState is read-only; unexpected call: revert()");
-        unimplemented!()
-    }
-
     fn set(&mut self, access_key: StorageKey, value: Box<[u8]>) -> Result<()> {
         bail!(
             "ProvingState is read-only; unexpected call: set({:?}, {:?})",
