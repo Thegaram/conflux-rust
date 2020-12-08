@@ -35,8 +35,8 @@ use cfx_internal_common::{
 use cfx_parameters::{consensus::*, consensus_internal::*};
 use cfx_statedb::{Result as DbResult, StateDb, StateDbGeneric};
 use cfx_storage::{
-    defaults::DEFAULT_EXECUTION_PREFETCH_THREADS, ProvingState, RecordingState,
-    StateIndex, StateProof, StorageManagerTrait,
+    defaults::DEFAULT_EXECUTION_PREFETCH_THREADS, ProofStorage,
+    RecordingStorage, StateIndex, StateProof, StorageManagerTrait,
 };
 use cfx_types::{BigEndianHash, H256, KECCAK_EMPTY_BLOOM, U256, U512};
 use core::convert::TryFrom;
@@ -625,7 +625,7 @@ impl ConsensusExecutor {
 
     pub fn call_virtual_on_proof(
         &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize,
-        state: ProvingState,
+        state: ProofStorage,
     ) -> RpcResult<ExecutionOutcome>
     {
         self.handler
@@ -1820,7 +1820,7 @@ impl ConsensusExecutionHandler {
             )?
             .ok_or("state deleted")?;
 
-        let state_1 = RecordingState::new(state_0);
+        let state_1 = RecordingStorage::new(state_0);
 
         let state_db = StateDbGeneric::new(state_1);
 
@@ -1873,7 +1873,7 @@ impl ConsensusExecutionHandler {
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     pub fn call_virtual_on_proof(
         &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize,
-        state: ProvingState,
+        state: ProofStorage,
     ) -> RpcResult<ExecutionOutcome>
     {
         let spec = Spec::new_spec();

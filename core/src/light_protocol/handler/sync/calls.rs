@@ -29,7 +29,7 @@ use cfx_parameters::light::{
     BLOOM_REQUEST_BATCH_SIZE, BLOOM_REQUEST_TIMEOUT, CACHE_TIMEOUT,
     MAX_BLOOMS_IN_FLIGHT,
 };
-use cfx_storage::ProvingState;
+use cfx_storage::ProofStorage;
 use futures::future::FutureExt;
 use network::{node_table::NodeId, NetworkContext};
 use primitives::{SignedTransaction, StorageKey};
@@ -313,7 +313,7 @@ impl Calls {
 
         trace!("!!!!!!!!! calling virtual on proof");
 
-        let state = ProvingState::new(
+        let state = ProofStorage::new(
             context.execution_proof,
             state_root,
             maybe_intermediate_padding,

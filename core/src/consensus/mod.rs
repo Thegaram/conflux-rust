@@ -44,7 +44,7 @@ use cfx_parameters::{
     },
 };
 use cfx_statedb::StateDb;
-use cfx_storage::{state_manager::StateManagerTrait, ProvingState, StateProof};
+use cfx_storage::{state_manager::StateManagerTrait, ProofStorage, StateProof};
 use cfx_types::{Bloom, H160, H256, U256};
 use either::Either;
 use itertools::Itertools;
@@ -1004,7 +1004,7 @@ impl ConsensusGraph {
     }
 
     pub fn call_virtual_on_proof(
-        &self, tx: &SignedTransaction, epoch: EpochNumber, state: ProvingState,
+        &self, tx: &SignedTransaction, epoch: EpochNumber, state: ProofStorage,
     ) -> RpcResult<ExecutionOutcome> {
         // only allow to call against stated epoch
         // self.validate_stated_epoch(&epoch)?; // !!!!!!!!!!!!!!!!!!!

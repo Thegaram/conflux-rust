@@ -2,13 +2,13 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-pub struct ProvingState {
+pub struct ProofStorage {
     proof: StateProof,
     root: StateRoot,
     maybe_intermediate_padding: Option<DeltaMptKeyPadding>,
 }
 
-impl ProvingState {
+impl ProofStorage {
     pub fn new(
         proof: StateProof, root: StateRoot,
         maybe_intermediate_padding: Option<DeltaMptKeyPadding>,
@@ -22,7 +22,7 @@ impl ProvingState {
     }
 }
 
-impl StateTrait for ProvingState {
+impl StateTrait for ProofStorage {
     fn commit(&mut self, epoch_id: EpochId) -> Result<StateRootWithAuxInfo> {
         bail!(
             "ProvingState is read-only; unexpected call: commit({:?})",

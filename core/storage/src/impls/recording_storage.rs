@@ -2,7 +2,7 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-pub struct RecordingState<Storage: StateTrait> {
+pub struct RecordingStorage<Storage: StateTrait> {
     storage: Storage,
 
     // Note: we need interior mutability so that we can record accesses and we
@@ -11,7 +11,7 @@ pub struct RecordingState<Storage: StateTrait> {
     proof_merger: Mutex<StateProofMerger>,
 }
 
-impl<Storage: StateTrait> RecordingState<Storage> {
+impl<Storage: StateTrait> RecordingStorage<Storage> {
     pub fn new(storage: Storage) -> Self {
         Self {
             storage,
@@ -26,7 +26,7 @@ impl<Storage: StateTrait> RecordingState<Storage> {
     }
 }
 
-impl<Storage: StateTrait> StateTrait for RecordingState<Storage> {
+impl<Storage: StateTrait> StateTrait for RecordingStorage<Storage> {
     delegate! {
         to self.storage {
             fn get_with_proof(&self, access_key: StorageKey) -> Result<(Option<Box<[u8]>>, StateProof)>;
