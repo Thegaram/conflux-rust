@@ -315,8 +315,7 @@ impl Calls {
         trace!("!!!!!!!!! calling virtual on proof");
 
         let state = ProvingState::new(
-            // proof.execution_proof,
-            cfx_storage::StateProof::default(),
+            proof.execution_proof,
             state_root,
             maybe_intermediate_padding,
         );
