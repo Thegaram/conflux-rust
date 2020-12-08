@@ -52,7 +52,6 @@ use primitives::{
         TRANSACTION_OUTCOME_EXCEPTION_WITH_NONCE_BUMPING,
         TRANSACTION_OUTCOME_SUCCESS,
     },
-    StateRoot,
     Action, Block, BlockHeaderBuilder, EpochId, SignedTransaction,
     TransactionIndex, MERKLE_NULL_NODE,
 };
@@ -625,9 +624,9 @@ impl ConsensusExecutor {
     }
 
     pub fn call_virtual_on_proof(
-        &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize, proof: StateProof, root: StateRoot,
+        &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize, state: ProvingState,
     ) -> RpcResult<ExecutionOutcome> {
-        self.handler.call_virtual_on_proof(tx, epoch_id, epoch_size, proof, root)
+        self.handler.call_virtual_on_proof(tx, epoch_id, epoch_size, state)
     }
 
     pub fn stop(&self) {
@@ -1866,7 +1865,7 @@ impl ConsensusExecutionHandler {
 
     // !!!!!!!!!!!!!!!!!!!!!!!!!!!!
     pub fn call_virtual_on_proof(
-        &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize, proof: StateProof, root: StateRoot,
+        &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize, state: ProvingState,
     ) -> RpcResult<ExecutionOutcome> {
         let spec = Spec::new_spec();
         let internal_contract_map = InternalContractMap::new();
@@ -1913,12 +1912,6 @@ impl ConsensusExecutionHandler {
         //     .ok_or("state deleted")?;
 
         // let state_1 = RecordingState::new(state_0);
-
-        trace!("!!!!!!!!! constructing proving state");
-
-        let state = ProvingState::new(proof, root);
-
-        trace!("!!!!!!!!! constructed proving state");
 
         let state_db = StateDbGeneric::new(state);
 

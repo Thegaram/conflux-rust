@@ -44,7 +44,7 @@ use cfx_parameters::{
     },
 };
 use cfx_statedb::StateDb;
-use cfx_storage::{state_manager::StateManagerTrait, StateProof};
+use cfx_storage::{state_manager::StateManagerTrait, StateProof, ProvingState};
 use cfx_types::{Bloom, H160, H256, U256};
 use either::Either;
 use itertools::Itertools;
@@ -59,7 +59,7 @@ use primitives::{
     filter::{Filter, FilterError},
     log_entry::LocalizedLogEntry,
     receipt::Receipt,
-    EpochId, EpochNumber, SignedTransaction, TransactionIndex, StateRoot,
+    EpochId, EpochNumber, SignedTransaction, TransactionIndex,
 };
 use rayon::prelude::*;
 use std::{
@@ -1003,7 +1003,7 @@ impl ConsensusGraph {
     }
 
     pub fn call_virtual_on_proof(
-        &self, tx: &SignedTransaction, epoch: EpochNumber, proof: StateProof, root: StateRoot,
+        &self, tx: &SignedTransaction, epoch: EpochNumber, state: ProvingState,
     ) -> RpcResult<ExecutionOutcome> {
         // only allow to call against stated epoch
         // self.validate_stated_epoch(&epoch)?; // !!!!!!!!!!!!!!!!!!!
@@ -1014,7 +1014,7 @@ impl ConsensusGraph {
         } else {
             bail!("cannot get block hashes in the specified epoch, maybe it does not exist?");
         };
-        self.executor.call_virtual_on_proof(tx, &epoch_id, epoch_size, proof, root)
+        self.executor.call_virtual_on_proof(tx, &epoch_id, epoch_size, state)
     }
 
     /// Get the number of processed blocks (i.e., the number of calls to

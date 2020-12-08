@@ -26,11 +26,9 @@ impl<Storage: StateTrait> StateTrait for RecordingState<Storage> {
     delegate! {
         to self.storage {
             fn get_with_proof(&self, access_key: StorageKey) -> Result<(Option<Box<[u8]>>, StateProof)>;
-            // fn get_node_merkle_all_versions<WithProof: StaticBool>(&self, access_key: StorageKey) -> Result<(NodeMerkleTriplet, NodeMerkleProof)>;
             fn set(&mut self, access_key: StorageKey, value: Box<[u8]>) -> Result<()>;
             fn delete(&mut self, access_key: StorageKey) -> Result<()>;
             fn delete_test_only(&mut self, access_key: StorageKey) -> Result<Option<Box<[u8]>>>;
-            // fn delete_all<AM: access_mode::AccessMode>(&mut self, access_key_prefix: StorageKey) -> Result<Option<Vec<MptKeyValue>>>;
             fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo>;
             fn get_state_root(&self) -> Result<StateRootWithAuxInfo>;
             fn commit(&mut self, epoch_id: EpochId) -> Result<StateRootWithAuxInfo>;
@@ -38,6 +36,15 @@ impl<Storage: StateTrait> StateTrait for RecordingState<Storage> {
         }
     }
 
+    // `delegate!` is unable to pass generic "marker" types
+    fn get_node_merkle_all_versions<WithProof: StaticBool>(
+        &self, access_key: StorageKey,
+    ) -> Result<(NodeMerkleTriplet, NodeMerkleProof)> {
+        self.storage
+            .get_node_merkle_all_versions::<WithProof>(access_key)
+    }
+
+    // we need to record `get` operations
     fn get(&self, access_key: StorageKey) -> Result<Option<Box<[u8]>>> {
         let (val, proof) = self.storage.get_with_proof(access_key)?;
 
@@ -52,13 +59,7 @@ impl<Storage: StateTrait> StateTrait for RecordingState<Storage> {
         Ok(val)
     }
 
-    fn get_node_merkle_all_versions<WithProof: StaticBool>(
-        &self, access_key: StorageKey,
-    ) -> Result<(NodeMerkleTriplet, NodeMerkleProof)> {
-        self.storage
-            .get_node_merkle_all_versions::<WithProof>(access_key)
-    }
-
+    // `delete_all<Read>` is a kind of read operation so we need to record it
     fn delete_all<AM: access_mode::AccessMode>(
         &mut self, access_key_prefix: StorageKey,
     ) -> Result<Option<Vec<MptKeyValue>>> {

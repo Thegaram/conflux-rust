@@ -31,6 +31,7 @@ use futures::future::FutureExt;
 use network::{node_table::NodeId, NetworkContext};
 use primitives::{SignedTransaction};
 use primitives::StorageKey;
+use cfx_storage::ProvingState;
 
 fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
     use std::hash::Hasher;
@@ -305,8 +306,10 @@ impl Calls {
 
         trace!("!!!!!!!!! calling virtual on proof");
 
+        let state = ProvingState::new(proof.execution_proof, state_root, maybe_intermediate_padding);
+
         let outcome = consensus
-            .call_virtual_on_proof(tx, primitives::EpochNumber::Number(epoch), proof.execution_proof, state_root) // TODO: pass intermediate_padding
+            .call_virtual_on_proof(tx, primitives::EpochNumber::Number(epoch), state) // TODO: pass intermediate_padding
             .map_err(|e| e.to_string())?; // TODO
 
         trace!("!!!!!!!!! calling virtual on proof finished");

@@ -5,11 +5,12 @@
 pub struct ProvingState {
     proof: StateProof,
     root: StateRoot,
+    maybe_intermediate_padding: Option<DeltaMptKeyPadding>,
 }
 
 impl ProvingState {
-    pub fn new(proof: StateProof, root: StateRoot) -> Self {
-        Self { proof, root }
+    pub fn new(proof: StateProof, root: StateRoot, maybe_intermediate_padding: Option<DeltaMptKeyPadding>) -> Self {
+        Self { proof, root, maybe_intermediate_padding }
     }
 }
 
@@ -33,7 +34,7 @@ impl StateTrait for ProvingState {
             bail!("ProvingState is read-only; unexpected call: delete_all<Write>({:?})", access_key_prefix);
         }
 
-        match self.proof.traverse(access_key_prefix, &self.root, None) { // TODO
+        match self.proof.traverse(access_key_prefix, &self.root, &self.maybe_intermediate_padding) {
             (false, _) => bail!("Call failed on ProvingState: delete_all({:?})", access_key_prefix), // TODO
             (true, kvs) if kvs.is_empty() => Ok(None),
             (true, kvs) => Ok(Some(kvs)),
@@ -47,7 +48,7 @@ impl StateTrait for ProvingState {
     fn get(&self, access_key: StorageKey) -> Result<Option<Box<[u8]>>> {
         trace!("ProvingState::get({:?})", access_key);
 
-        match self.proof.get_value(access_key, &self.root, None) {
+        match self.proof.get_value(access_key, &self.root, &self.maybe_intermediate_padding) {
             (false, _) => bail!("Call failed on ProvingState: get({:?})", access_key), // TODO
             (true, None) => Ok(None),
             (true, Some(v)) => Ok(Some(v.to_vec().into_boxed_slice())), // TODO
@@ -86,4 +87,4 @@ use crate::{
     StateProof,
 };
 use cfx_internal_common::StateRootWithAuxInfo;
-use primitives::{EpochId, NodeMerkleTriplet, StaticBool, StateRoot, StorageKey};
+use primitives::{EpochId, NodeMerkleTriplet, StaticBool, StateRoot, StorageKey, DeltaMptKeyPadding};
