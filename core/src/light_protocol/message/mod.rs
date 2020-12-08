@@ -9,11 +9,11 @@ pub use crate::NodeType;
 pub use message::msgid;
 pub use protocol::{
     BlockHashes, BlockHeaders, BlockTxs, BlockTxsWithHash, BloomWithEpoch,
-    Blooms, CallKey, CallResultProof, CallResultWithKey, CallResults,
-    CallTransactions, GetBlockHashesByEpoch, GetBlockHeaders, GetBlockTxs,
-    GetBlooms, GetReceipts, GetStateEntries, GetStateRoots, GetStorageRoots,
-    GetTxInfos, GetTxs, GetWitnessInfo, NewBlockHashes, Receipts,
-    ReceiptsWithEpoch, SendRawTx, StateEntries, StateEntryProof,
+    Blooms, CallContext, CallContextWithKey, CallContexts, CallKey,
+    GetBlockHashesByEpoch, GetBlockHeaders, GetBlockTxs, GetBlooms,
+    GetCallContexts, GetReceipts, GetStateEntries, GetStateRoots,
+    GetStorageRoots, GetTxInfos, GetTxs, GetWitnessInfo, NewBlockHashes,
+    Receipts, ReceiptsWithEpoch, SendRawTx, StateEntries, StateEntryProof,
     StateEntryWithKey, StateKey, StateRootWithEpoch, StateRoots,
     StatusPingDeprecatedV1, StatusPingV2, StatusPongDeprecatedV1, StatusPongV2,
     StorageRootKey, StorageRootProof, StorageRootWithKey, StorageRoots, TxInfo,

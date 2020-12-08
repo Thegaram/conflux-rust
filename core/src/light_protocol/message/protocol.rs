@@ -345,13 +345,13 @@ impl PartialOrd for CallKey {
 }
 
 #[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable)]
-pub struct CallTransactions {
+pub struct GetCallContexts {
     pub request_id: RequestId,
     pub keys: Vec<CallKey>,
 }
 
 #[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable)]
-pub struct CallResultProof {
+pub struct CallContext {
     pub execution_proof: StateProof,
 
     // state root is validated against witness info retrieved previously;
@@ -361,14 +361,14 @@ pub struct CallResultProof {
 }
 
 #[derive(Debug, RlpEncodable, RlpDecodable)] // TODO: Clone?
-pub struct CallResultWithKey {
+pub struct CallContextWithKey {
     pub key: CallKey,
     // pub result: ExecutionOutcome,
-    pub proof: CallResultProof,
+    pub context: CallContext,
 }
 
 #[derive(Debug, Default, RlpEncodable, RlpDecodable)]
-pub struct CallResults {
+pub struct CallContexts {
     pub request_id: RequestId,
-    pub results: Vec<CallResultWithKey>,
+    pub contexts: Vec<CallContextWithKey>,
 }

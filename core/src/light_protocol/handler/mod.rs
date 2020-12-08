@@ -15,7 +15,7 @@ use crate::{
             msgid, BlockHashes as GetBlockHashesResponse,
             BlockHeaders as GetBlockHeadersResponse,
             BlockTxs as GetBlockTxsResponse, Blooms as GetBloomsResponse,
-            CallResults as CallTransactionsResponse, NewBlockHashes, NodeType,
+            CallContexts, NewBlockHashes, NodeType,
             Receipts as GetReceiptsResponse, SendRawTx,
             StateEntries as GetStateEntriesResponse,
             StateRoots as GetStateRootsResponse, StatusPingDeprecatedV1,
@@ -405,7 +405,7 @@ impl Handler {
             msgid::BLOCK_HEADERS => self.on_block_headers(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::BLOCK_TXS => self.on_block_txs(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::BLOOMS => self.on_blooms(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
-            msgid::CALL_RESULTS => self.on_call_results(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::CALL_CONTEXTS => self.on_call_contexts(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::NEW_BLOCK_HASHES => self.on_new_block_hashes(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::RECEIPTS => self.on_receipts(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::STATE_ENTRIES => self.on_state_entries(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
@@ -692,20 +692,18 @@ impl Handler {
         Ok(())
     }
 
-    fn on_call_results(
-        &self, io: &dyn NetworkContext, peer: &NodeId,
-        resp: CallTransactionsResponse,
-    ) -> Result<()>
-    {
+    fn on_call_contexts(
+        &self, io: &dyn NetworkContext, peer: &NodeId, resp: CallContexts,
+    ) -> Result<()> {
         debug!(
-            "received {} call results (request id = {})",
-            resp.results.len(),
+            "received {} call contexts (request id = {})",
+            resp.contexts.len(),
             resp.request_id
         );
-        trace!("on_call_results resp={:?}", resp);
+        trace!("on_call_contexts resp={:?}", resp);
 
         self.calls
-            .receive(peer, resp.request_id, resp.results.into_iter())?;
+            .receive(peer, resp.request_id, resp.contexts.into_iter())?;
 
         self.calls.sync(io);
         Ok(())

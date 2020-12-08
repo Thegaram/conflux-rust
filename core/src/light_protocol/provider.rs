@@ -18,11 +18,11 @@ use crate::{
             msgid, BlockHashes as GetBlockHashesResponse,
             BlockHeaders as GetBlockHeadersResponse,
             BlockTxs as GetBlockTxsResponse, BlockTxsWithHash, BloomWithEpoch,
-            Blooms as GetBloomsResponse, CallKey, CallResultProof,
-            CallResultWithKey, CallResults as CallTransactionsResponse,
-            CallTransactions, GetBlockHashesByEpoch, GetBlockHeaders,
-            GetBlockTxs, GetBlooms, GetReceipts, GetStateEntries,
-            GetStateRoots, GetStorageRoots, GetTxInfos, GetTxs, GetWitnessInfo,
+            Blooms as GetBloomsResponse, CallContext, CallContextWithKey,
+            CallContexts as CallTransactionsResponse, CallKey,
+            GetBlockHashesByEpoch, GetBlockHeaders, GetBlockTxs, GetBlooms,
+            GetCallContexts, GetReceipts, GetStateEntries, GetStateRoots,
+            GetStorageRoots, GetTxInfos, GetTxs, GetWitnessInfo,
             NewBlockHashes, NodeType, Receipts as GetReceiptsResponse,
             ReceiptsWithEpoch, SendRawTx,
             StateEntries as GetStateEntriesResponse, StateEntryProof,
@@ -182,11 +182,11 @@ impl Provider {
         let protocol = io.get_protocol();
 
         match msg_id {
-            msgid::CALL_TRANSACTIONS => self.on_call_transactions(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::GET_BLOCK_HASHES_BY_EPOCH => self.on_get_block_hashes_by_epoch(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::GET_BLOCK_HEADERS => self.on_get_block_headers(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::GET_BLOCK_TXS => self.on_get_block_txs(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::GET_BLOOMS => self.on_get_blooms(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
+            msgid::GET_CALL_CONTEXTS => self.on_get_call_contexts(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::GET_RECEIPTS => self.on_get_receipts(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::GET_STATE_ENTRIES => self.on_get_state_entries(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
             msgid::GET_STATE_ROOTS => self.on_get_state_roots(io, peer, decode_rlp_and_check_deprecation(&rlp, min_supported_ver, protocol)?),
@@ -887,7 +887,7 @@ impl Provider {
         Ok(())
     }
 
-    fn execution_proof(&self, key: CallKey) -> Result<CallResultWithKey> {
+    fn call_context(&self, key: CallKey) -> Result<CallContextWithKey> {
         let snapshot_epoch_count = self.ledger.snapshot_epoch_count() as u64;
 
         // state root in current snapshot period
@@ -915,19 +915,22 @@ impl Provider {
             )
             .map_err(|e| e.to_string())?; // TODO
 
-        let proof = CallResultProof {
+        let proof = CallContext {
             execution_proof,
             state_root,
             prev_snapshot_state_root,
         };
 
-        Ok(CallResultWithKey { key, proof })
+        Ok(CallContextWithKey {
+            key,
+            context: proof,
+        })
     }
 
-    fn on_call_transactions(
-        &self, io: &dyn NetworkContext, peer: &NodeId, req: CallTransactions,
+    fn on_get_call_contexts(
+        &self, io: &dyn NetworkContext, peer: &NodeId, req: GetCallContexts,
     ) -> Result<()> {
-        debug!("on_call_transactions req={:?}", req);
+        debug!("on_get_call_contexts req={:?}", req);
         self.throttle(peer, &req)?;
         let request_id = req.request_id;
 
@@ -935,9 +938,9 @@ impl Provider {
             .keys
             .into_iter()
             .take(MAX_ITEMS_TO_SEND)
-            .map(|key| self.execution_proof(key));
+            .map(|key| self.call_context(key));
 
-        let (results, errors) = partition_results(it);
+        let (contexts, errors) = partition_results(it);
 
         if !errors.is_empty() {
             debug!(
@@ -946,11 +949,11 @@ impl Provider {
             );
         }
 
-        trace!("call transaction results: {:?}", results);
+        trace!("get call contexts results: {:?}", contexts);
 
         let msg: Box<dyn Message> = Box::new(CallTransactionsResponse {
             request_id,
-            results,
+            contexts,
         });
 
         msg.send(io, peer)?;

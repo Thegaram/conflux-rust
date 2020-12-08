@@ -19,8 +19,7 @@ use crate::{
         common::{FullPeerState, Peers},
         error::*,
         message::{
-            msgid, CallKey, CallResultProof, CallResultWithKey,
-            CallTransactions,
+            msgid, CallContext, CallContextWithKey, CallKey, GetCallContexts,
         },
     },
     message::{Message, RequestId},
@@ -89,7 +88,7 @@ impl Calls {
         state_roots: Arc<StateRoots>, request_id_allocator: Arc<UniqueId>,
     ) -> Self
     {
-        let sync_manager = SyncManager::new(peers, msgid::CALL_TRANSACTIONS);
+        let sync_manager = SyncManager::new(peers, msgid::GET_CALL_CONTEXTS);
 
         let cache = LruCache::with_expiry_duration(*CACHE_TIMEOUT);
         let verified = Arc::new(RwLock::new(cache));
@@ -154,15 +153,15 @@ impl Calls {
     #[inline]
     pub fn receive(
         &self, peer: &NodeId, id: RequestId,
-        call_results: impl Iterator<Item = CallResultWithKey>,
+        call_results: impl Iterator<Item = CallContextWithKey>,
     ) -> Result<()>
     {
-        for CallResultWithKey { key, proof } in call_results {
+        for CallContextWithKey { key, context } in call_results {
             trace!(
-                "Validating call with key {:?} and proof {:?}",
+                "Validating call with key {:?} and context {:?}",
                 // result,
                 key,
-                proof
+                context
             );
 
             if self.sync_manager.contains(&key) {
@@ -176,7 +175,7 @@ impl Calls {
                     trace!("!!!!!!!!! request not found; tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
                     continue;
                 }
-                Some(_) => self.validate_and_store(key, proof)?,
+                Some(_) => self.validate_and_store(key, context)?,
             };
         }
 
@@ -185,10 +184,10 @@ impl Calls {
 
     #[inline]
     pub fn validate_and_store(
-        &self, key: CallKey, proof: CallResultProof,
+        &self, key: CallKey, context: CallContext,
     ) -> Result<()> {
         // validate call result
-        match self.execute_call(&key.tx, key.epoch, proof) {
+        match self.execute_call(&key.tx, key.epoch, context) {
             Err(e) => {
                 // forward error to both rpc caller(s) and sync handler
                 // so we need to make it clonable
@@ -247,7 +246,7 @@ impl Calls {
         );
 
         let msg: Box<dyn Message> =
-            Box::new(CallTransactions { request_id, keys });
+            Box::new(GetCallContexts { request_id, keys });
 
         msg.send(io, peer)?;
         Ok(Some(request_id))
@@ -264,10 +263,10 @@ impl Calls {
 
     #[inline]
     fn execute_call(
-        &self, tx: &SignedTransaction, epoch: u64, proof: CallResultProof,
+        &self, tx: &SignedTransaction, epoch: u64, context: CallContext,
     ) -> Result<ExecutionOutcome> {
         // validate state root
-        let state_root = proof.state_root;
+        let state_root = context.state_root;
 
         trace!("!!!!!!!!! validating state root");
 
@@ -280,7 +279,7 @@ impl Calls {
         // })?;
 
         // validate previous state root
-        let maybe_prev_root = proof.prev_snapshot_state_root;
+        let maybe_prev_root = context.prev_snapshot_state_root;
 
         trace!("!!!!!!!!! validating previous state root");
 
@@ -315,7 +314,7 @@ impl Calls {
         trace!("!!!!!!!!! calling virtual on proof");
 
         let state = ProvingState::new(
-            proof.execution_proof,
+            context.execution_proof,
             state_root,
             maybe_intermediate_padding,
         );
