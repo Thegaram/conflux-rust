@@ -78,7 +78,6 @@ impl TxInfos {
     {
         let ledger = LedgerInfo::new(consensus);
         let sync_manager = SyncManager::new(peers, msgid::GET_TX_INFOS);
-
         let cache = LruCache::with_expiry_duration(*CACHE_TIMEOUT);
         let verified = Arc::new(RwLock::new(cache));
 

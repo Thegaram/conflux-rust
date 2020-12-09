@@ -64,7 +64,6 @@ impl StorageRoots {
     ) -> Self
     {
         let sync_manager = SyncManager::new(peers, msgid::GET_STORAGE_ROOTS);
-
         let cache = LruCache::with_expiry_duration(*CACHE_TIMEOUT);
         let verified = Arc::new(RwLock::new(cache));
 

@@ -59,6 +59,11 @@ error_chain! {
             display("Logs bloom hash validation for epoch {} failed, expected={:?}, received={:?}", epoch, expected, received),
         }
 
+        InvalidExecutionProof{ tx: H256, epoch: u64, reason: &'static str } {
+            description("Invalid execution proof"),
+            display("Invalid execution proof for transaction {:?} in epoch {}: {:?}", tx, epoch, reason),
+        }
+
         InvalidLedgerProofSize{ hash: H256, expected: u64, received: u64 } {
             description("Invalid ledger proof size"),
             display("Invalid ledger proof size for header {:?}: expected={}, received={}", hash, expected, received),
@@ -225,6 +230,7 @@ pub fn handle(
         }
 
         ErrorKind::InvalidBloom{..}
+        | ErrorKind::InvalidExecutionProof{..}
         | ErrorKind::InvalidLedgerProofSize{..}
         | ErrorKind::InvalidMessageFormat
         | ErrorKind::InvalidPreviousStateRoot{..}

@@ -53,7 +53,6 @@ impl Txs {
         peers: Arc<Peers<FullPeerState>>, request_id_allocator: Arc<UniqueId>,
     ) -> Self {
         let sync_manager = SyncManager::new(peers, msgid::GET_TXS);
-
         let cache = LruCache::with_expiry_duration(*CACHE_TIMEOUT);
         let verified = Arc::new(RwLock::new(cache));
 

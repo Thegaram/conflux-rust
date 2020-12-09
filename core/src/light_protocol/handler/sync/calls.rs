@@ -1,12 +1,8 @@
-// Copyright 2019 Conflux Foundation. All rights reserved.
+// Copyright 2020 Conflux Foundation. All rights reserved.
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
 extern crate lru_time_cache;
-
-use lru_time_cache::LruCache;
-use parking_lot::{Mutex, RwLock};
-use std::{future::Future, sync::Arc};
 
 use super::{
     common::{FutureItem, PendingItem, SyncManager, TimeOrdered},
@@ -26,19 +22,15 @@ use crate::{
     UniqueId,
 };
 use cfx_parameters::light::{
-    BLOOM_REQUEST_BATCH_SIZE, BLOOM_REQUEST_TIMEOUT, CACHE_TIMEOUT,
-    MAX_BLOOMS_IN_FLIGHT,
+    CACHE_TIMEOUT, CALL_REQUEST_BATCH_SIZE, CALL_REQUEST_TIMEOUT,
+    MAX_CALLS_IN_FLIGHT,
 };
 use futures::future::FutureExt;
+use lru_time_cache::LruCache;
 use network::{node_table::NodeId, NetworkContext};
+use parking_lot::{Mutex, RwLock};
 use primitives::{SignedTransaction, StorageKey};
-
-fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
-    use std::hash::Hasher;
-    let mut s = std::collections::hash_map::DefaultHasher::new();
-    t.hash(&mut s);
-    s.finish()
-}
+use std::{future::Future, sync::Arc};
 
 #[derive(Debug)]
 struct Statistics {
@@ -77,7 +69,7 @@ pub struct Calls {
     // sync and request manager
     sync_manager: SyncManager<CallKey, MissingCallResult>,
 
-    // bloom filters received from full node
+    // call contexts received from full node
     verified: Arc<RwLock<LruCache<CallKey, PendingCall>>>,
 }
 
@@ -121,22 +113,11 @@ impl Calls {
         let key = CallKey { tx, epoch };
 
         if !verified.contains_key(&key) {
-            trace!(
-                "!!!!!!!!! requesting now; tx hash = {:?}, key hash = {:?}!",
-                key.tx.hash(),
-                calculate_hash(&key)
-            );
             let missing = std::iter::once(MissingCallResult::new(key.clone()));
 
             self.sync_manager.request_now(missing, |peer, keys| {
                 self.send_request(io, peer, keys)
             });
-
-            if self.sync_manager.contains(&key) {
-                trace!("!!!!!!!!! requesting now; synx manager CONTAINS tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
-            } else {
-                trace!("!!!!!!!!! requesting now; synx manager DOES NOT CONTAIN tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
-            }
         }
 
         verified
@@ -158,22 +139,12 @@ impl Calls {
         for CallContextWithKey { key, context } in call_results {
             trace!(
                 "Validating call with key {:?} and context {:?}",
-                // result,
                 key,
                 context
             );
 
-            if self.sync_manager.contains(&key) {
-                trace!("!!!!!!!!! receiving; synx manager CONTAINS tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
-            } else {
-                trace!("!!!!!!!!! receiving; synx manager DOES NOT CONTAIN tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
-            }
-
             match self.sync_manager.check_if_requested(peer, id, &key)? {
-                None => {
-                    trace!("!!!!!!!!! request not found; tx hash = {:?}, key hash = {:?}!", key.tx.hash(), calculate_hash(&key));
-                    continue;
-                }
+                None => continue,
                 Some(_) => self.validate_and_store(key, context)?,
             };
         }
@@ -209,7 +180,6 @@ impl Calls {
                     .set(WrappedExecutionOutcome::new(outcome));
 
                 self.sync_manager.remove_in_flight(&key);
-
                 Ok(())
             }
         }
@@ -218,13 +188,12 @@ impl Calls {
     #[inline]
     pub fn clean_up(&self) {
         // remove timeout in-flight requests
-        let timeout = *BLOOM_REQUEST_TIMEOUT; // TODO
+        let timeout = *CALL_REQUEST_TIMEOUT;
         let calls = self.sync_manager.remove_timeout_requests(timeout);
         trace!("Timeout calls ({}): {:?}", calls.len(), calls);
         self.sync_manager.insert_waiting(calls.into_iter());
 
-        // trigger cache cleanup
-        // self.verified.write().get(&Default::default()); // TODO
+        // TODO(thegaram): trigger cache cleanup
     }
 
     #[inline]
@@ -254,8 +223,8 @@ impl Calls {
     #[inline]
     pub fn sync(&self, io: &dyn NetworkContext) {
         self.sync_manager.sync(
-            MAX_BLOOMS_IN_FLIGHT,     // TODO
-            BLOOM_REQUEST_BATCH_SIZE, // TODO
+            MAX_CALLS_IN_FLIGHT,
+            CALL_REQUEST_BATCH_SIZE,
             |peer, epochs| self.send_request(io, peer, epochs),
         );
     }
@@ -267,43 +236,38 @@ impl Calls {
         // validate state root
         let state_root = context.state_root;
 
-        trace!("!!!!!!!!! validating state root");
-
-        self.state_roots.validate_state_root(epoch, &state_root)?;
-        // .chain_err(|| ErrorKind::InvalidStateProof {
-        //     epoch,
-        //     key: key.clone(),
-        //     value: value.clone(),
-        //     reason: "Validation of current state root failed",
-        // })?;
+        self.state_roots
+            .validate_state_root(epoch, &state_root)
+            .chain_err(|| ErrorKind::InvalidExecutionProof {
+                tx: tx.hash(),
+                epoch,
+                reason: "Validation of current state root failed",
+            })?;
 
         // validate previous state root
         let maybe_prev_root = context.prev_snapshot_state_root;
 
-        trace!("!!!!!!!!! validating previous state root");
-
         self.state_roots
-            .validate_prev_snapshot_state_root(epoch, &maybe_prev_root)?;
-        // .chain_err(|| ErrorKind::InvalidStateProof {
-        //     epoch,
-        //     key: key.clone(),
-        //     value: value.clone(),
-        //     reason: "Validation of previous state root failed",
-        // })?;
+            .validate_prev_snapshot_state_root(epoch, &maybe_prev_root)
+            .chain_err(|| ErrorKind::InvalidExecutionProof {
+                tx: tx.hash(),
+                epoch,
+                reason: "Validation of previous state root failed",
+            })?;
 
-        // construct padding
+        // re-execute locally
+        let consensus = self
+            .consensus
+            .as_any()
+            .downcast_ref::<ConsensusGraph>()
+            .expect("downcast should succeed");
+
         let maybe_intermediate_padding = maybe_prev_root.map(|root| {
             StorageKey::delta_mpt_padding(
                 &root.snapshot_root,
                 &root.intermediate_delta_root,
             )
         });
-
-        let consensus = self
-            .consensus
-            .as_any()
-            .downcast_ref::<ConsensusGraph>()
-            .expect("downcast should succeed");
 
         let outcome = consensus
             .call_virtual_verified(
@@ -313,7 +277,11 @@ impl Calls {
                 state_root,
                 maybe_intermediate_padding,
             )
-            .map_err(|e| e.to_string())?; // TODO
+            .chain_err(|| ErrorKind::InvalidExecutionProof {
+                tx: tx.hash(),
+                epoch,
+                reason: "Local execution failed",
+            })?;
 
         Ok(outcome)
     }

@@ -5,10 +5,9 @@
 use crate::{bytes::Bytes, vm};
 use cfx_types::{Address, U256, U512};
 use primitives::{receipt::StorageChange, LogEntry, TransactionWithSignature};
-use rlp_derive::{RlpDecodable, RlpEncodable};
 use solidity_abi::{ABIDecodable, ABIDecodeError};
 
-#[derive(Clone, Debug, PartialEq, RlpEncodable, RlpDecodable)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Executed {
     /// Gas used during execution of transaction.
     pub gas_used: U256,
@@ -47,7 +46,7 @@ pub struct Executed {
     pub trace: Vec<ExecTrace>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum ToRepackError {
     /// Returned when transaction nonce does not match state nonce.
     InvalidNonce {
@@ -83,7 +82,7 @@ pub enum ToRepackError {
     SenderDoesNotExist,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum TxDropError {
     /// The account nonce in world-state is larger than tx nonce
     OldNonce(U256, U256),
@@ -119,10 +118,6 @@ pub enum ExecutionOutcome {
     NotExecutedToReconsiderPacking(ToRepackError),
     ExecutionErrorBumpNonce(ExecutionError, Executed),
     Finished(Executed),
-}
-
-impl Clone for ExecutionOutcome {
-    fn clone(&self) -> Self { unimplemented!() }
 }
 
 impl ExecutionOutcome {
