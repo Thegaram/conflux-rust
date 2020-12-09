@@ -29,7 +29,6 @@ use cfx_parameters::light::{
     BLOOM_REQUEST_BATCH_SIZE, BLOOM_REQUEST_TIMEOUT, CACHE_TIMEOUT,
     MAX_BLOOMS_IN_FLIGHT,
 };
-use cfx_storage::ProofStorage;
 use futures::future::FutureExt;
 use network::{node_table::NodeId, NetworkContext};
 use primitives::{SignedTransaction, StorageKey};
@@ -305,32 +304,16 @@ impl Calls {
             .as_any()
             .downcast_ref::<ConsensusGraph>()
             .expect("downcast should succeed");
-        // .call_virtual_with_proof(&key.tx,
-        // primitives::EpochNumber::Number(key.epoch))
-
-        // TODO: re-execute on state proof
-        // ...
-
-        trace!("!!!!!!!!! calling virtual on proof");
-
-        let state = ProofStorage::new(
-            context.execution_proof,
-            state_root,
-            maybe_intermediate_padding,
-        );
 
         let outcome = consensus
-            .call_virtual_on_proof(
+            .call_virtual_verified(
                 tx,
                 primitives::EpochNumber::Number(epoch),
-                state,
-            ) // TODO: pass intermediate_padding
+                context.execution_proof,
+                state_root,
+                maybe_intermediate_padding,
+            )
             .map_err(|e| e.to_string())?; // TODO
-
-        trace!("!!!!!!!!! calling virtual on proof finished");
-
-        // tx: &SignedTransaction, epoch: EpochNumber, proof: StateProof, root:
-        // StateRoot,
 
         Ok(outcome)
     }

@@ -909,7 +909,7 @@ impl Provider {
             .as_any()
             .downcast_ref::<ConsensusGraph>()
             .expect("downcast should succeed")
-            .call_virtual_with_proof(
+            .call_virtual_record_proof(
                 &key.tx,
                 primitives::EpochNumber::Number(key.epoch),
             )
