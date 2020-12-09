@@ -253,7 +253,7 @@ impl TrieProof {
         }
     }
 
-    pub fn traverse(
+    pub fn get_all_kv_in_subtree(
         &self, path: &[u8], root: &MerkleHash,
     ) -> (bool, Vec<MptKeyValue>) {
         // empty trie
@@ -283,11 +283,11 @@ impl TrieProof {
                     break;
                 }
                 WalkStop::PathDiverted { .. } => {
-                    // TODO
+                    // TODO: implement this
+                    // TODO: try to trigger this in test
                     unimplemented!()
                 }
                 WalkStop::ChildNotFound { .. } => {
-                    // TODO
                     return (true, vec![]);
                 }
                 WalkStop::Descent {
@@ -304,7 +304,11 @@ impl TrieProof {
         // traverse subtree using BFS
         let key_prefix: CompressedPathRaw = path.into();
 
-        let mut queue = std::collections::VecDeque::new();
+        // queue elements are <node-hash, maybe-child-id, key-prefix>
+        // node-hash: hash of the node to be visited
+        // maybe-child-id: the id of this node in its parent
+        // key-prefix: key prefix leading to this node
+        let mut queue = VecDeque::new();
         queue.push_back((hash, None, key_prefix));
 
         let mut kv: Vec<MptKeyValue> = vec![];
@@ -503,6 +507,6 @@ use cfx_types::H256;
 use primitives::{MerkleHash, MptValue, MERKLE_NULL_NODE};
 use rlp::*;
 use std::{
-    collections::{hash_map::RandomState, HashMap},
+    collections::{hash_map::RandomState, HashMap, VecDeque},
     ops::{Deref, DerefMut},
 };

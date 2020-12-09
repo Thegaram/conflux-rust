@@ -13,7 +13,6 @@ use primitives::{
     BlockHeader, BlockReceipts, Receipt, SignedTransaction, StateRoot,
     StorageRoot,
 };
-// use crate::executive::ExecutionOutcome;
 
 #[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable)]
 pub struct StatusPingDeprecatedV1 {
@@ -328,7 +327,6 @@ impl PartialEq for CallKey {
     }
 }
 
-// TODO: compare hash?
 impl Ord for CallKey {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.tx
@@ -360,10 +358,9 @@ pub struct CallContext {
     pub prev_snapshot_state_root: Option<StateRoot>,
 }
 
-#[derive(Debug, RlpEncodable, RlpDecodable)] // TODO: Clone?
+#[derive(Debug, RlpEncodable, RlpDecodable)]
 pub struct CallContextWithKey {
     pub key: CallKey,
-    // pub result: ExecutionOutcome,
     pub context: CallContext,
 }
 

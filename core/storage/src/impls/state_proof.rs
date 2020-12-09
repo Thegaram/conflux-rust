@@ -208,7 +208,7 @@ impl StateProof {
         }
     }
 
-    pub fn traverse(
+    pub fn get_all_kv_in_subtree(
         &self, storage_key_prefix: StorageKey, root: &StateRoot,
         maybe_intermediate_padding: &Option<DeltaMptKeyPadding>,
     ) -> (bool, Vec<MptKeyValue>)
@@ -235,7 +235,7 @@ impl StateProof {
 
                 let key = storage_key_prefix.to_delta_mpt_key_bytes(&padding);
 
-                match proof.traverse(&key[..], &delta_root) {
+                match proof.get_all_kv_in_subtree(&key[..], &delta_root) {
                     (false, _) => return (false, vec![]),
                     (true, kvs) => Some(kvs),
                 }
@@ -259,7 +259,8 @@ impl StateProof {
                     Some(p) => storage_key_prefix.to_delta_mpt_key_bytes(&p),
                 };
 
-                match proof.traverse(&key[..], &intermediate_root) {
+                match proof.get_all_kv_in_subtree(&key[..], &intermediate_root)
+                {
                     (false, _) => return (false, vec![]),
                     (true, kvs) => Some(kvs),
                 }
@@ -279,7 +280,7 @@ impl StateProof {
             Some(ref proof) => {
                 let key = storage_key_prefix.to_key_bytes();
 
-                match proof.traverse(&key[..], &snapshot_root) {
+                match proof.get_all_kv_in_subtree(&key[..], &snapshot_root) {
                     (false, _) => return (false, vec![]),
                     (true, kvs) => Some(kvs),
                 }

@@ -913,7 +913,7 @@ impl Provider {
                 &key.tx,
                 primitives::EpochNumber::Number(key.epoch),
             )
-            .map_err(|e| e.to_string())?; // TODO
+            .map_err(|e| e.to_string())?;
 
         let proof = CallContext {
             execution_proof,

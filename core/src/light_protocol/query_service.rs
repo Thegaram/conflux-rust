@@ -287,7 +287,7 @@ impl QueryService {
         trace!("retrieve_call_result tx = {:?} epoch = {:?}", tx, epoch);
 
         with_timeout(
-            *MAX_POLL_TIME,
+            *MAX_POLL_TIME, // TODO(thegaram): is this enough?
             format!("Timeout while calling tx {:?} at epoch {:?}", tx, epoch),
             self.with_io(|io| self.handler.calls.request_now(io, tx, epoch)),
         )

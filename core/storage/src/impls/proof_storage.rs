@@ -25,18 +25,18 @@ impl ProofStorage {
 impl StateTrait for ProofStorage {
     fn commit(&mut self, epoch_id: EpochId) -> Result<StateRootWithAuxInfo> {
         bail!(
-            "ProvingState is read-only; unexpected call: commit({:?})",
+            "ProofStorage is read-only; unexpected call: commit({:?})",
             epoch_id
         );
     }
 
     fn compute_state_root(&mut self) -> Result<StateRootWithAuxInfo> {
-        bail!("Unexpected call on ProvingState: compute_state_root()");
+        bail!("Unexpected call on ProofStorage: compute_state_root()");
     }
 
     fn delete(&mut self, access_key: StorageKey) -> Result<()> {
         bail!(
-            "ProvingState is read-only; unexpected call: delete({:?})",
+            "ProofStorage is read-only; unexpected call: delete({:?})",
             access_key
         );
     }
@@ -45,24 +45,24 @@ impl StateTrait for ProofStorage {
         &mut self, access_key_prefix: StorageKey,
     ) -> Result<Option<Vec<MptKeyValue>>> {
         trace!(
-            "ProvingState::delete_all<{}>({:?})",
+            "ProofStorage::delete_all<{}>({:?})",
             AM::is_read_only(),
             access_key_prefix
         );
 
         if !AM::is_read_only() {
-            bail!("ProvingState is read-only; unexpected call: delete_all<Write>({:?})", access_key_prefix);
+            bail!("ProofStorage is read-only; unexpected call: delete_all<Write>({:?})", access_key_prefix);
         }
 
-        match self.proof.traverse(
+        match self.proof.get_all_kv_in_subtree(
             access_key_prefix,
             &self.root,
             &self.maybe_intermediate_padding,
         ) {
             (false, _) => bail!(
-                "Call failed on ProvingState: delete_all({:?})",
+                "Call failed on ProofStorage: delete_all({:?})",
                 access_key_prefix
-            ), // TODO
+            ),
             (true, kvs) if kvs.is_empty() => Ok(None),
             (true, kvs) => Ok(Some(kvs)),
         }
@@ -72,13 +72,13 @@ impl StateTrait for ProofStorage {
         &mut self, access_key: StorageKey,
     ) -> Result<Option<Box<[u8]>>> {
         bail!(
-            "Unexpected call on ProvingState: delete_test_only({:?})",
+            "Unexpected call on ProofStorage: delete_test_only({:?})",
             access_key
         );
     }
 
     fn get(&self, access_key: StorageKey) -> Result<Option<Box<[u8]>>> {
-        trace!("ProvingState::get({:?})", access_key);
+        trace!("ProofStorage::get({:?})", access_key);
 
         match self.proof.get_value(
             access_key,
@@ -86,35 +86,35 @@ impl StateTrait for ProofStorage {
             &self.maybe_intermediate_padding,
         ) {
             (false, _) => {
-                bail!("Call failed on ProvingState: get({:?})", access_key)
-            } // TODO
+                bail!("Call failed on ProofStorage: get({:?})", access_key)
+            }
             (true, None) => Ok(None),
-            (true, Some(v)) => Ok(Some(v.to_vec().into_boxed_slice())), // TODO
+            (true, Some(v)) => Ok(Some(v.to_vec().into_boxed_slice())),
         }
     }
 
     fn get_node_merkle_all_versions<WithProof: StaticBool>(
         &self, access_key: StorageKey,
     ) -> Result<(NodeMerkleTriplet, NodeMerkleProof)> {
-        bail!("Unexpected call on ProvingState: get_node_merkle_all_versions({:?})", access_key);
+        bail!("Unexpected call on ProofStorage: get_node_merkle_all_versions({:?})", access_key);
     }
 
     fn get_state_root(&self) -> Result<StateRootWithAuxInfo> {
-        bail!("Unexpected call on ProvingState: get_state_root()");
+        bail!("Unexpected call on ProofStorage: get_state_root()");
     }
 
     fn get_with_proof(
         &self, access_key: StorageKey,
     ) -> Result<(Option<Box<[u8]>>, StateProof)> {
         bail!(
-            "Unexpected call on ProvingState: get_with_proof({:?})",
+            "Unexpected call on ProofStorage: get_with_proof({:?})",
             access_key
         );
     }
 
     fn set(&mut self, access_key: StorageKey, value: Box<[u8]>) -> Result<()> {
         bail!(
-            "ProvingState is read-only; unexpected call: set({:?}, {:?})",
+            "ProofStorage is read-only; unexpected call: set({:?}, {:?})",
             access_key,
             value
         );

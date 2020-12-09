@@ -139,7 +139,6 @@ impl<StateDbStorage: StorageStateTrait> StateGeneric<StateDbStorage> {
         block_number: u64,
     ) -> DbResult<Self>
     {
-        // TODO: fail gracefully
         let annual_interest_rate = db.get_annual_interest_rate()?;
         let accumulate_interest_rate = db.get_accumulate_interest_rate()?;
         let total_issued_tokens = db.get_total_issued_tokens()?;
@@ -158,7 +157,7 @@ impl<StateDbStorage: StorageStateTrait> StateGeneric<StateDbStorage> {
         } else {
             // If db is not initialized, all the loaded value should be zero.
 
-            // TODO
+            // TODO: try to trigger this
             assert!(
                 annual_interest_rate.is_zero(),
                 "annual_interest_rate is non-zero when db is un-init"
