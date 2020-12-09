@@ -2,17 +2,17 @@
 // Conflux is free software and distributed under GNU General Public License.
 // See http://www.gnu.org/licenses/
 
-use cfx_types::{Bloom, H160, H256};
-use rlp_derive::{RlpDecodable, RlpEncodable};
-
 use super::NodeType;
 use crate::message::RequestId;
 use cfx_internal_common::ChainIdParamsDeprecated;
 use cfx_storage::{NodeMerkleProof, StateProof, TrieProof};
+use cfx_types::{Bloom, H160, H256};
 use primitives::{
     BlockHeader, BlockReceipts, Receipt, SignedTransaction, StateRoot,
     StorageRoot,
 };
+use rlp_derive::{RlpDecodable, RlpEncodable};
+use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Debug, Default, RlpEncodable, RlpDecodable)]
 pub struct StatusPingDeprecatedV1 {
@@ -315,7 +315,7 @@ pub struct StorageRoots {
     pub roots: Vec<StorageRootWithKey>,
 }
 
-#[derive(Clone, Debug, Eq, Hash, RlpEncodable, RlpDecodable)]
+#[derive(Clone, Debug, RlpEncodable, RlpDecodable)]
 pub struct CallKey {
     pub tx: SignedTransaction,
     pub epoch: u64,
@@ -326,6 +326,8 @@ impl PartialEq for CallKey {
         self.tx.hash() == other.tx.hash() && self.epoch == other.epoch
     }
 }
+
+impl Eq for CallKey {}
 
 impl Ord for CallKey {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
@@ -339,6 +341,13 @@ impl Ord for CallKey {
 impl PartialOrd for CallKey {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+impl Hash for CallKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.tx.hash.hash(state);
+        self.epoch.hash(state);
     }
 }
 

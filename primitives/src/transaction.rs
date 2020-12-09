@@ -421,17 +421,11 @@ impl MallocSizeOf for TransactionWithSignature {
 }
 
 /// A signed transaction with successfully recovered `sender`.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)] // TODO: safe to derive Eq?
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SignedTransaction {
     pub transaction: TransactionWithSignature,
     pub sender: Address,
     pub public: Option<Public>,
-}
-
-impl std::hash::Hash for SignedTransaction {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.transaction.hash.hash(state);
-    }
 }
 
 impl Encodable for SignedTransaction {
