@@ -1013,8 +1013,8 @@ impl ConsensusGraph {
         maybe_intermediate_padding: Option<DeltaMptKeyPadding>,
     ) -> RpcResult<ExecutionOutcome>
     {
-        // only allow to call against stated epoch
-        self.validate_stated_epoch(&epoch)?;
+        // note: do not validate stated epoch as the best executed
+        // state epoch number is not available on light nodes
 
         let (epoch_id, epoch_size) = match self.get_block_hashes_by_epoch(epoch) {
             Ok(v) => (v.last().expect("pivot block always exist").clone(), v.len()),

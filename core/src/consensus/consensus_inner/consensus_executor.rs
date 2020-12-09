@@ -620,7 +620,7 @@ impl ConsensusExecutor {
             Some(h) => h.height(),
         };
 
-        // keeping the lock will make sure state index is available
+        // keeping the lock will ensure state index is available
         let state_availability_boundary =
             self.data_man.state_availability_boundary.read();
 
@@ -631,7 +631,7 @@ impl ConsensusExecutor {
         let state_index = self
             .data_man
             .get_state_readonly_index(epoch_id)
-            .expect("state is not available even though within boundary");
+            .expect("state index is not available after availability check");
 
         let storage = self
             .data_man
@@ -667,7 +667,7 @@ impl ConsensusExecutor {
 
         let proof = storage
             .try_into_proof()
-            .expect("Found inconsistencies in the recorded proof");
+            .expect("recorded proof is inconsistent");
 
         Ok((r, proof))
     }
@@ -1070,7 +1070,8 @@ impl ConsensusExecutionHandler {
             &spec,
             start_block_number - 1, /* block_number */
         )
-        .expect("Failed to initialize state");
+        .expect("failed to initialize state");
+
         let epoch_receipts = self
             .process_epoch_transactions(
                 &spec,
