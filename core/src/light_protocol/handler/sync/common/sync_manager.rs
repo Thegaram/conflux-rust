@@ -14,13 +14,102 @@ use network::node_table::NodeId;
 use parking_lot::{Mutex, RwLock};
 use std::{
     cmp::Ord,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::Debug,
     hash::Hash,
     sync::Arc,
     time::{Duration, Instant},
 };
 use throttling::token_bucket::ThrottleResult;
+
+#[derive(Debug)]
+pub struct InFlightRequest2<T> {
+    pub items: Vec<T>,
+    pub sent_at: Instant,
+    pub request_id: RequestId,
+    // TODO: add peer id
+}
+
+// impl<T> InFlightRequest<T> {
+//     pub fn new(item: T, request_id: RequestId) -> Self {
+//         InFlightRequest {
+//             item,
+//             request_id,
+//             sent_at: Instant::now(),
+//         }
+//     }
+// }
+
+struct InFlightRequestManager<Key, Item> {
+    requests: HashMap<RequestId, InFlightRequest2<Item>>,
+    keys: HashSet<Key>,
+}
+
+impl<Key, Item> Default for InFlightRequestManager<Key, Item> {
+    fn default() -> Self {
+        Self {
+            requests: HashMap::new(),
+            keys: HashSet::new(),
+        }
+    }
+}
+
+impl<Key, Item> InFlightRequestManager<Key, Item>
+where
+    Key: Clone + Eq + Hash,
+    Item: Debug + Clone + HasKey<Key> + Ord,
+{
+    fn len(&self) -> usize {
+        self.keys.len()
+    }
+
+    fn contains_key(&self, key: &Key) -> bool {
+        self.keys.contains(key)
+    }
+
+    fn insert(&mut self, request: InFlightRequest2<Item>) {
+        for item in &request.items {
+            if self.keys.contains(&item.key()) {
+                // TODO
+            }
+
+            self.keys.insert(item.key());
+        }
+
+        self.requests.insert(request.request_id, request);
+    }
+
+    fn remove(&mut self, id: &RequestId) -> Option<InFlightRequest2<Item>> {
+        match self.requests.remove(id) {
+            None => None,
+            Some(req) => {
+                for item in &req.items {
+                    if !self.keys.remove(&item.key()) {
+                        // TODO
+                    }
+                }
+
+                Some(req)
+            }
+        }
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &InFlightRequest2<Item>> {
+        self.requests.values()
+    }
+}
+
+// impl<Key, Item> Extend<(RequestId, InFlightRequest2<Item>)> for InFlightRequestManager<Key, Item>
+// where
+//     Key: Clone + Eq + Hash,
+//     Item: Debug + Clone + HasKey<Key> + Ord,
+// {
+//     fn extend<T: IntoIterator<Item=(RequestId, InFlightRequest2<Item>)>>(&mut self, iter: T) {
+//         for (id, request) in iter {
+//             self.insert(id, request);
+//         }
+//     }
+// }
 
 #[derive(Debug)]
 struct InFlightRequest<T> {
@@ -41,7 +130,11 @@ impl<T> InFlightRequest<T> {
 
 pub struct SyncManager<Key, Item> {
     // headers requested but not received yet
-    in_flight: RwLock<HashMap<Key, InFlightRequest<Item>>>,
+    in_flight_old: RwLock<HashMap<Key, InFlightRequest<Item>>>,
+
+
+    in_flight: RwLock<InFlightRequestManager<Key, Item>>,
+
 
     // collection of all peers available
     peers: Arc<Peers<FullPeerState>>,
@@ -69,7 +162,8 @@ where
         let waiting = RwLock::new(PriorityQueue::new());
 
         SyncManager {
-            in_flight,
+            in_flight_old: in_flight,
+            in_flight: Default::default(),
             peers,
             sync_lock,
             waiting,
@@ -109,7 +203,7 @@ where
     pub fn check_if_requested(
         &self, peer: &NodeId, request_id: RequestId, key: &Key,
     ) -> Result<Option<RequestId>, Error> {
-        let id = match self.in_flight.read().get(&key).map(|req| req.request_id)
+        let id = match self.in_flight_old.read().get(&key).map(|req| req.request_id)
         {
             Some(id) if id == request_id => return Ok(Some(id)),
             x => x,
@@ -139,7 +233,13 @@ where
 
     #[inline]
     pub fn remove_in_flight(&self, key: &Key) {
-        self.in_flight.write().remove(&key);
+        // self.in_flight_old.write().remove(&key);
+        unimplemented!()
+    }
+
+    #[inline]
+    pub fn remove_in_flight_new(&self, id: &RequestId) {
+        self.in_flight.write().remove(&id);
     }
 
     #[inline]
@@ -220,12 +320,16 @@ where
             match request(&peer, keys) {
                 Ok(None) => {}
                 Ok(Some(request_id)) => {
-                    let new_in_flight =
-                        batch.to_owned().into_iter().map(|item| {
-                            (item.key(), InFlightRequest::new(item, request_id))
-                        });
+                    // TODO
+                    let new_in_flight = InFlightRequest2 {
+                        items: batch.to_owned(),
+                        sent_at: Instant::now(),
+                        request_id,
+                    };
 
-                    in_flight.extend(new_in_flight);
+                    in_flight.insert(new_in_flight);
+
+                    // in_flight.extend(new_in_flight);
                 }
                 Err(e) => {
                     warn!(
@@ -241,23 +345,45 @@ where
 
     #[inline]
     pub fn remove_timeout_requests(&self, timeout: Duration) -> Vec<Item> {
+        // let mut in_flight = self.in_flight_old.write();
+
+        // // collect timed-out requests
+        // let items: Vec<_> = in_flight
+        //     .iter()
+        //     .filter_map(|(_hash, req)| match req.sent_at {
+        //         t if t.elapsed() < timeout => None,
+        //         _ => Some(req.item.clone()),
+        //     })
+        //     .collect();
+
+        // // remove requests from `in_flight`
+        // for item in &items {
+        //     in_flight.remove(&item.key());
+        // }
+
+        // items
+        unimplemented!()
+    }
+
+    #[inline]
+    pub fn remove_timeout_requests_new(&self, timeout: Duration) -> Vec<InFlightRequest2<Item>> {
         let mut in_flight = self.in_flight.write();
 
         // collect timed-out requests
-        let items: Vec<_> = in_flight
+        let ids: Vec<_> = in_flight
             .iter()
-            .filter_map(|(_hash, req)| match req.sent_at {
+            .filter_map(|req| match req.sent_at {
                 t if t.elapsed() < timeout => None,
-                _ => Some(req.item.clone()),
+                _ => Some(req.request_id),
             })
             .collect();
 
         // remove requests from `in_flight`
-        for item in &items {
-            in_flight.remove(&item.key());
-        }
-
-        items
+        ids
+            .iter()
+            .map(|id| in_flight.remove(id))
+            .map(Option::unwrap) // guaranteed to exist
+            .collect()
     }
 
     #[inline]
@@ -299,11 +425,14 @@ where
         match request(peer, keys) {
             Ok(None) => {}
             Ok(Some(request_id)) => {
-                let new_in_flight = missing.into_iter().map(|item| {
-                    (item.key(), InFlightRequest::new(item, request_id))
-                });
+                // TODO
+                let new_in_flight = InFlightRequest2 {
+                    items: missing,
+                    sent_at: Instant::now(),
+                    request_id,
+                };
 
-                in_flight.extend(new_in_flight);
+                in_flight.insert(new_in_flight);
             }
             Err(e) => {
                 warn!(
