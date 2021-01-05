@@ -120,6 +120,11 @@ impl StateEntries {
         entries: impl Iterator<Item = StateEntryWithKey>,
     ) -> Result<()>
     {
+        let mut coordinator = match self.sync_manager.receive(peer, id)? {
+            None => return Ok(()),
+            Some(c) => c,
+        };
+
         for StateEntryWithKey { key, entry, proof } in entries {
             trace!(
                 "Validating state entry {:?} with key {:?} and proof {:?}",
@@ -128,10 +133,13 @@ impl StateEntries {
                 proof
             );
 
-            match self.sync_manager.check_if_requested(peer, id, &key)? {
-                None => continue,
-                Some(_) => self.validate_and_store(key, entry, proof)?,
-            };
+            if !coordinator.should_process_item(&key) {
+                trace!("Skipping item");
+                continue;
+            }
+
+            self.validate_and_store(&key, entry, proof)?;
+            coordinator.item_processed(&key);
         }
 
         Ok(())
@@ -139,7 +147,7 @@ impl StateEntries {
 
     #[inline]
     pub fn validate_and_store(
-        &self, key: StateKey, entry: Option<Vec<u8>>, proof: StateEntryProof,
+        &self, key: &StateKey, entry: Option<Vec<u8>>, proof: StateEntryProof,
     ) -> Result<()> {
         // validate state entry
         if let Err(e) =

@@ -120,13 +120,21 @@ impl BlockTxs {
         block_txs: impl Iterator<Item = BlockTxsWithHash>,
     ) -> Result<()>
     {
+        let mut coordinator = match self.sync_manager.receive(peer, id)? {
+            None => return Ok(()),
+            Some(c) => c,
+        };
+
         for BlockTxsWithHash { hash, block_txs } in block_txs {
             trace!("Validating block_txs {:?} with hash {}", block_txs, hash);
 
-            match self.sync_manager.check_if_requested(peer, id, &hash)? {
-                None => continue,
-                Some(_) => self.validate_and_store(hash, block_txs)?,
-            };
+            if !coordinator.should_process_item(&hash) {
+                trace!("Skipping item");
+                continue;
+            }
+
+            self.validate_and_store(hash, block_txs)?;
+            coordinator.item_processed(&hash);
         }
 
         Ok(())

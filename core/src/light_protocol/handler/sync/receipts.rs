@@ -116,6 +116,11 @@ impl Receipts {
         receipts: impl Iterator<Item = ReceiptsWithEpoch>,
     ) -> Result<()>
     {
+        let mut coordinator = match self.sync_manager.receive(peer, id)? {
+            None => return Ok(()),
+            Some(c) => c,
+        };
+
         for ReceiptsWithEpoch {
             epoch,
             epoch_receipts,
@@ -127,10 +132,13 @@ impl Receipts {
                 epoch
             );
 
-            match self.sync_manager.check_if_requested(peer, id, &epoch)? {
-                None => continue,
-                Some(_) => self.validate_and_store(epoch, epoch_receipts)?,
-            };
+            if !coordinator.should_process_item(&epoch) {
+                trace!("Skipping item");
+                continue;
+            }
+
+            self.validate_and_store(epoch, epoch_receipts)?;
+            coordinator.item_processed(&epoch);
         }
 
         Ok(())

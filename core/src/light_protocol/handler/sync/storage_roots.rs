@@ -119,13 +119,21 @@ impl StorageRoots {
         entries: impl Iterator<Item = StorageRootWithKey>,
     ) -> Result<()>
     {
+        let mut coordinator = match self.sync_manager.receive(peer, id)? {
+            None => return Ok(()),
+            Some(c) => c,
+        };
+
         for StorageRootWithKey { key, root, proof } in entries {
             trace!("Validating storage root {:?} with key {:?}", root, key);
 
-            match self.sync_manager.check_if_requested(peer, id, &key)? {
-                None => continue,
-                Some(_) => self.validate_and_store(key, root, proof)?,
-            };
+            if !coordinator.should_process_item(&key) {
+                trace!("Skipping item");
+                continue;
+            }
+
+            self.validate_and_store(&key, root, proof)?;
+            coordinator.item_processed(&key);
         }
 
         Ok(())
@@ -133,7 +141,7 @@ impl StorageRoots {
 
     #[inline]
     pub fn validate_and_store(
-        &self, key: StorageRootKey, root: StorageRoot, proof: StorageRootProof,
+        &self, key: &StorageRootKey, root: StorageRoot, proof: StorageRootProof,
     ) -> Result<()> {
         // validate storage root
         if let Err(e) =

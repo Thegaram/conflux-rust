@@ -127,6 +127,11 @@ impl StateRoots {
         state_roots: impl Iterator<Item = StateRootWithEpoch>,
     ) -> Result<()>
     {
+        let mut coordinator = match self.sync_manager.receive(peer, id)? {
+            None => return Ok(()),
+            Some(c) => c,
+        };
+
         for StateRootWithEpoch { epoch, state_root } in state_roots {
             trace!(
                 "Validating state root {:?} with epoch {}",
@@ -134,10 +139,13 @@ impl StateRoots {
                 epoch
             );
 
-            match self.sync_manager.check_if_requested(peer, id, &epoch)? {
-                None => continue,
-                Some(_) => self.validate_and_store(epoch, state_root)?,
-            };
+            if !coordinator.should_process_item(&epoch) {
+                trace!("Skipping item");
+                continue;
+            }
+
+            self.validate_and_store(epoch, state_root)?;
+            coordinator.item_processed(&epoch);
         }
 
         Ok(())

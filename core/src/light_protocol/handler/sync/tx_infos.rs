@@ -132,17 +132,22 @@ impl TxInfos {
         infos: impl Iterator<Item = TxInfo>,
     ) -> Result<()>
     {
+        let mut coordinator = match self.sync_manager.receive(peer, id)? {
+            None => return Ok(()),
+            Some(c) => c,
+        };
+
         for info in infos {
             trace!("Validating tx_info {:?}", info);
+            let key = info.tx.hash();
 
-            match self.sync_manager.check_if_requested(
-                peer,
-                id,
-                &info.tx.hash(),
-            )? {
-                None => continue,
-                Some(_) => self.validate_and_store(info)?,
-            };
+            if !coordinator.should_process_item(&key) {
+                trace!("Skipping item");
+                continue;
+            }
+
+            self.validate_and_store(info)?;
+            coordinator.item_processed(&key);
         }
 
         Ok(())

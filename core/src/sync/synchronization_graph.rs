@@ -1254,7 +1254,8 @@ impl SynchronizationGraph {
             }
 
             if let NodeType::Light = self.node_type {
-                self.data_man.remove_block_header(&hash, true /* remove_db */);
+                self.data_man
+                    .remove_block_header(&hash, true /* remove_db */);
             }
 
             self.data_man.remove_epoch_execution_context_from_db(&hash);

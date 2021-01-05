@@ -22,26 +22,83 @@ use std::{
 };
 use throttling::token_bucket::ThrottleResult;
 
-#[derive(Debug)]
-pub struct InFlightRequest2<T> {
-    pub items: Vec<T>,
-    pub sent_at: Instant,
-    pub request_id: RequestId,
-    // TODO: add peer id
+// define a "trait aliases"
+// see: https://www.worthe-it.co.za/blog/2017-01-15-aliasing-traits-in-rust.html
+pub trait KeyT: Clone + Eq + Hash {}
+impl<T> KeyT for T where T: Clone + Eq + Hash {}
+
+pub trait ItemT<K: KeyT>: Debug + Clone + HasKey<K> + Ord {}
+impl<T, K: KeyT> ItemT<K> for T where T: Debug + Clone + HasKey<K> + Ord {}
+
+pub struct InFlightRequest<T> {
+    items: Vec<T>,
+    id: RequestId,
+    peer: NodeId,
+    sent_at: Instant,
 }
 
-// impl<T> InFlightRequest<T> {
-//     pub fn new(item: T, request_id: RequestId) -> Self {
-//         InFlightRequest {
-//             item,
-//             request_id,
-//             sent_at: Instant::now(),
-//         }
-//     }
-// }
+impl<T> Default for InFlightRequest<T> {
+    fn default() -> Self {
+        InFlightRequest {
+            items: vec![],
+            ..Default::default()
+        }
+    }
+}
+
+impl<T> InFlightRequest<T> {
+    pub fn new(items: Vec<T>, id: RequestId, peer: NodeId) -> Self {
+        InFlightRequest {
+            items,
+            id,
+            peer,
+            sent_at: Instant::now(),
+        }
+    }
+}
+
+// note: we need to specify trait bounds here,
+// otherwise we cannot implement Drop
+pub struct Coordinator<'a, K: KeyT, I: ItemT<K>> {
+    sync_manager: &'a SyncManager<K, I>,
+    req: InFlightRequest<I>,
+    to_process: HashSet<K>,
+}
+
+impl<'a, K: KeyT, I: ItemT<K>> Coordinator<'a, K, I> {
+    fn new(sm: &'a SyncManager<K, I>, req: InFlightRequest<I>) -> Self {
+        let to_process = req.items.iter().map(|item| item.key()).collect();
+
+        Coordinator {
+            sync_manager: sm,
+            req,
+            to_process,
+        }
+    }
+
+    pub fn should_process_item(&mut self, key: &K) -> bool {
+        self.to_process.contains(key)
+    }
+
+    pub fn item_processed(&mut self, key: &K) { self.to_process.remove(&key); }
+}
+
+impl<'a, K: KeyT, I: ItemT<K>> Drop for Coordinator<'a, K, I> {
+    fn drop(&mut self) {
+        let mut req = Default::default();
+        std::mem::swap(&mut req, &mut self.req);
+
+        let to_rerequest = req
+            .items
+            .into_iter()
+            .filter(|item| self.to_process.contains(&item.key()));
+
+        self.sync_manager.insert_waiting(to_rerequest)
+    }
+}
 
 struct InFlightRequestManager<Key, Item> {
-    requests: HashMap<RequestId, InFlightRequest2<Item>>,
+    requests: HashMap<RequestId, InFlightRequest<Item>>,
     keys: HashSet<Key>,
 }
 
@@ -54,20 +111,12 @@ impl<Key, Item> Default for InFlightRequestManager<Key, Item> {
     }
 }
 
-impl<Key, Item> InFlightRequestManager<Key, Item>
-where
-    Key: Clone + Eq + Hash,
-    Item: Debug + Clone + HasKey<Key> + Ord,
-{
-    fn len(&self) -> usize {
-        self.keys.len()
-    }
+impl<Key: KeyT, Item: ItemT<Key>> InFlightRequestManager<Key, Item> {
+    fn len(&self) -> usize { self.keys.len() }
 
-    fn contains_key(&self, key: &Key) -> bool {
-        self.keys.contains(key)
-    }
+    fn contains_key(&self, key: &Key) -> bool { self.keys.contains(key) }
 
-    fn insert(&mut self, request: InFlightRequest2<Item>) {
+    fn insert(&mut self, request: InFlightRequest<Item>) {
         for item in &request.items {
             if self.keys.contains(&item.key()) {
                 // TODO
@@ -76,10 +125,10 @@ where
             self.keys.insert(item.key());
         }
 
-        self.requests.insert(request.request_id, request);
+        self.requests.insert(request.id, request);
     }
 
-    fn remove(&mut self, id: &RequestId) -> Option<InFlightRequest2<Item>> {
+    fn remove(&mut self, id: &RequestId) -> Option<InFlightRequest<Item>> {
         match self.requests.remove(id) {
             None => None,
             Some(req) => {
@@ -94,47 +143,14 @@ where
         }
     }
 
-    fn iter(&self) -> impl Iterator<Item = &InFlightRequest2<Item>> {
+    fn iter(&self) -> impl Iterator<Item = &InFlightRequest<Item>> {
         self.requests.values()
-    }
-}
-
-// impl<Key, Item> Extend<(RequestId, InFlightRequest2<Item>)> for InFlightRequestManager<Key, Item>
-// where
-//     Key: Clone + Eq + Hash,
-//     Item: Debug + Clone + HasKey<Key> + Ord,
-// {
-//     fn extend<T: IntoIterator<Item=(RequestId, InFlightRequest2<Item>)>>(&mut self, iter: T) {
-//         for (id, request) in iter {
-//             self.insert(id, request);
-//         }
-//     }
-// }
-
-#[derive(Debug)]
-struct InFlightRequest<T> {
-    pub item: T,
-    pub request_id: RequestId,
-    pub sent_at: Instant,
-}
-
-impl<T> InFlightRequest<T> {
-    pub fn new(item: T, request_id: RequestId) -> Self {
-        InFlightRequest {
-            item,
-            request_id,
-            sent_at: Instant::now(),
-        }
     }
 }
 
 pub struct SyncManager<Key, Item> {
     // headers requested but not received yet
-    in_flight_old: RwLock<HashMap<Key, InFlightRequest<Item>>>,
-
-
     in_flight: RwLock<InFlightRequestManager<Key, Item>>,
-
 
     // collection of all peers available
     peers: Arc<Peers<FullPeerState>>,
@@ -149,20 +165,14 @@ pub struct SyncManager<Key, Item> {
     request_msg_id: MsgId,
 }
 
-impl<Key, Item> SyncManager<Key, Item>
-where
-    Key: Clone + Eq + Hash,
-    Item: Debug + Clone + HasKey<Key> + Ord,
-{
+impl<Key: KeyT, Item: ItemT<Key>> SyncManager<Key, Item> {
     pub fn new(
         peers: Arc<Peers<FullPeerState>>, request_msg_id: MsgId,
     ) -> Self {
-        let in_flight = RwLock::new(HashMap::new());
         let sync_lock = Default::default();
         let waiting = RwLock::new(PriorityQueue::new());
 
         SyncManager {
-            in_flight_old: in_flight,
             in_flight: Default::default(),
             peers,
             sync_lock,
@@ -200,34 +210,29 @@ where
     }
 
     #[inline]
-    pub fn check_if_requested(
-        &self, peer: &NodeId, request_id: RequestId, key: &Key,
-    ) -> Result<Option<RequestId>, Error> {
-        let id = match self.in_flight_old.read().get(&key).map(|req| req.request_id)
-        {
-            Some(id) if id == request_id => return Ok(Some(id)),
-            x => x,
-        };
+    pub fn receive(
+        &self, peer: &NodeId, request_id: RequestId,
+    ) -> Result<Option<Coordinator<'_, Key, Item>>, Error> {
+        // TODO: handle peer id
+        if let Some(req) = self.in_flight.write().remove(&request_id) {
+            return Ok(Some(Coordinator::new(&self, req)));
+        }
 
+        // request does not exist => throttle
         let peer = self.get_existing_peer_state(peer)?;
-
         let bucket_name = self.request_msg_id.to_string();
+
         let bucket = match peer.read().unexpected_msgs.get(&bucket_name) {
             Some(bucket) => bucket,
-            None => return Ok(id),
+            None => return Ok(None),
         };
 
         let result = bucket.lock().throttle_default();
 
         match result {
-            ThrottleResult::Success => Ok(id),
-            ThrottleResult::Throttled(_) => Ok(id),
-            ThrottleResult::AlreadyThrottled => {
-                bail!(ErrorKind::UnexpectedResponse {
-                    expected: id,
-                    received: request_id,
-                });
-            }
+            ThrottleResult::Success => Ok(None),
+            ThrottleResult::Throttled(_) => Ok(None),
+            ThrottleResult::AlreadyThrottled => todo!(),
         }
     }
 
@@ -320,16 +325,11 @@ where
             match request(&peer, keys) {
                 Ok(None) => {}
                 Ok(Some(request_id)) => {
-                    // TODO
-                    let new_in_flight = InFlightRequest2 {
-                        items: batch.to_owned(),
-                        sent_at: Instant::now(),
+                    in_flight.insert(InFlightRequest::new(
+                        batch.to_owned(),
                         request_id,
-                    };
-
-                    in_flight.insert(new_in_flight);
-
-                    // in_flight.extend(new_in_flight);
+                        peer,
+                    ));
                 }
                 Err(e) => {
                     warn!(
@@ -366,7 +366,9 @@ where
     }
 
     #[inline]
-    pub fn remove_timeout_requests_new(&self, timeout: Duration) -> Vec<InFlightRequest2<Item>> {
+    pub fn remove_timeout_requests_new(
+        &self, timeout: Duration,
+    ) -> Vec<InFlightRequest<Item>> {
         let mut in_flight = self.in_flight.write();
 
         // collect timed-out requests
@@ -374,13 +376,12 @@ where
             .iter()
             .filter_map(|req| match req.sent_at {
                 t if t.elapsed() < timeout => None,
-                _ => Some(req.request_id),
+                _ => Some(req.id),
             })
             .collect();
 
         // remove requests from `in_flight`
-        ids
-            .iter()
+        ids.iter()
             .map(|id| in_flight.remove(id))
             .map(Option::unwrap) // guaranteed to exist
             .collect()
@@ -425,14 +426,8 @@ where
         match request(peer, keys) {
             Ok(None) => {}
             Ok(Some(request_id)) => {
-                // TODO
-                let new_in_flight = InFlightRequest2 {
-                    items: missing,
-                    sent_at: Instant::now(),
-                    request_id,
-                };
-
-                in_flight.insert(new_in_flight);
+                in_flight
+                    .insert(InFlightRequest::new(missing, request_id, *peer));
             }
             Err(e) => {
                 warn!(

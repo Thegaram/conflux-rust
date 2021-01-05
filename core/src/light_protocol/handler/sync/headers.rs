@@ -195,23 +195,23 @@ impl Headers {
         let mut missing = HashSet::new();
         let mut has_invalid_header = false;
 
+        let mut coordinator = match self.sync_manager.receive(peer, id)? {
+            None => return Ok(()),
+            Some(c) => c,
+        };
+
         // TODO(thegaram): validate header timestamps
         for header in headers {
             let hash = header.hash();
 
-            // check request id
-            if self
-                .sync_manager
-                .check_if_requested(peer, id, &hash)?
-                .is_none()
-            {
+            if !coordinator.should_process_item(&hash) {
                 trace!("Received unexpected header: {:?}", hash);
                 self.unexpected_count.fetch_add(1, Ordering::Relaxed);
                 continue;
             }
 
-            // signal receipt
-            self.sync_manager.remove_in_flight(&hash);
+            // signal that we do not need to re-request this header
+            coordinator.item_processed(&hash);
 
             // check duplicates
             if self.graph.contains_block_header(&hash) {

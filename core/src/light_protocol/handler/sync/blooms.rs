@@ -115,13 +115,21 @@ impl Blooms {
         blooms: impl Iterator<Item = BloomWithEpoch>,
     ) -> Result<()>
     {
+        let mut coordinator = match self.sync_manager.receive(peer, id)? {
+            None => return Ok(()),
+            Some(c) => c,
+        };
+
         for BloomWithEpoch { epoch, bloom } in blooms {
             trace!("Validating bloom {:?} with epoch {}", bloom, epoch);
 
-            match self.sync_manager.check_if_requested(peer, id, &epoch)? {
-                None => continue,
-                Some(_) => self.validate_and_store(epoch, bloom)?,
-            };
+            if !coordinator.should_process_item(&epoch) {
+                trace!("Skipping item");
+                continue;
+            }
+
+            self.validate_and_store(epoch, bloom)?;
+            coordinator.item_processed(&epoch);
         }
 
         Ok(())

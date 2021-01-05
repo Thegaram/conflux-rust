@@ -214,22 +214,28 @@ impl Witnesses {
         Ok(())
     }
 
+    #[inline]
     pub fn receive(
         &self, peer: &NodeId, id: RequestId,
         witnesses: impl Iterator<Item = WitnessInfoWithHeight>,
     ) -> Result<()>
     {
+        let mut coordinator = match self.sync_manager.receive(peer, id)? {
+            None => return Ok(()),
+            Some(c) => c,
+        };
+
         for item in witnesses {
             trace!("Validating witness info {:?}", item);
+            let key = item.height;
 
-            match self.sync_manager.check_if_requested(
-                peer,
-                id,
-                &item.height,
-            )? {
-                None => continue,
-                Some(_) => self.validate_and_store(item)?,
-            };
+            if !coordinator.should_process_item(&key) {
+                trace!("Skipping item");
+                continue;
+            }
+
+            self.validate_and_store(item)?;
+            coordinator.item_processed(&key);
         }
 
         Ok(())
