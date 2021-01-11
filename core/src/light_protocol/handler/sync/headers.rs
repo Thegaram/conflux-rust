@@ -39,6 +39,13 @@ struct Statistics {
     timeout: u64,
 }
 
+#[derive(Debug, Default)]
+struct PeerStats {
+    num_requests: usize,
+    timeout_requests: usize,
+    timeout_items: usize,
+}
+
 // NOTE: order defines priority: Epoch < Reference < NewHash
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum HashSource {
@@ -109,6 +116,14 @@ pub struct Headers {
     // number of unexpected headers received
     // these are mostly responses for timeout requests
     unexpected_count: AtomicU64,
+
+
+
+
+
+    peers: Arc<Peers<FullPeerState>>,
+
+    peer_stats: parking_lot::RwLock<std::collections::HashMap<NodeId, PeerStats>>,
 }
 
 impl Headers {
@@ -133,6 +148,8 @@ impl Headers {
             sync_manager,
             timeout_count,
             unexpected_count,
+            peers,
+            peer_stats: Default::default(),
         }
     }
 
@@ -152,6 +169,8 @@ impl Headers {
                 timeout: self.timeout_count.load(Ordering::Relaxed),
             }
         );
+
+        debug!("peer statistics: {:?}", self.peer_stats.read());
     }
 
     #[inline]
@@ -265,19 +284,56 @@ impl Headers {
     }
 
     #[inline]
-    pub fn clean_up(&self) {
+    pub fn clean_up(&self, io: &dyn NetworkContext) {
+        // remove timeout in-flight requests
         let timeout = self
             .config
             .header_request_timeout
             .unwrap_or(*HEADER_REQUEST_TIMEOUT);
 
-        let headers = self.sync_manager.remove_timeout_requests(timeout);
-        trace!("Timeout headers ({}): {:?}", headers.len(), headers);
+        let reqs = self.sync_manager.remove_timeout_requests(timeout);
+        trace!("Timeout header requests ({}): {:?}", reqs.len(), reqs);
+
+        let mut stats = self.peer_stats.write();
+        let mut peers_to_disconnect = HashSet::new();
+
+        for req in &reqs {
+            let mut s = stats.entry(req.peer).or_default();
+            s.timeout_requests += 1;
+            s.timeout_items += req.items.len();
+
+            if let Some(peer_state) = self.peers.get(&req.peer) {
+                if peer_state.write().on_timeout_should_disconnect() {
+                    peers_to_disconnect.insert(req.peer);
+                }
+            }
+        }
+
+        for peer_id in peers_to_disconnect {
+            // Note `self.peers` will be used in `disconnect_peer`, so we must
+            // call it without locking `self.peers`.
+            info!("!!!!!!!!! disconnecting peer: {:?}", peer_id);
+
+            io.disconnect_peer(
+                &peer_id,
+                Some(network::UpdateNodeOperation::Failure),
+                "too many timeout requests", /* reason */
+            );
+        }
+
+        drop(stats);
+
+        let items = reqs
+            .into_iter()
+            .map(|r| r.items.into_iter())
+            .flatten()
+            .collect::<Vec<_>>();
 
         self.timeout_count
-            .fetch_add(headers.len() as u64, Ordering::Relaxed);
+            .fetch_add(items.len() as u64, Ordering::Relaxed);
 
-        self.sync_manager.insert_waiting(headers.into_iter());
+        // re-request
+        self.sync_manager.insert_waiting(items.into_iter());
     }
 
     #[inline]
@@ -301,6 +357,9 @@ impl Headers {
             Box::new(GetBlockHeaders { request_id, hashes });
 
         msg.send(io, peer)?;
+
+        self.peer_stats.write().entry(*peer).or_default().num_requests += 1;
+
         Ok(Some(request_id))
     }
 

@@ -151,7 +151,6 @@ impl Txs {
             .or_insert(PendingItem::pending())
             .set(tx);
 
-        self.sync_manager.remove_in_flight(&hash);
         Ok(())
     }
 
@@ -159,9 +158,13 @@ impl Txs {
     pub fn clean_up(&self) {
         // remove timeout in-flight requests
         let timeout = *TX_REQUEST_TIMEOUT;
-        let txs = self.sync_manager.remove_timeout_requests(timeout);
-        trace!("Timeout txs ({}): {:?}", txs.len(), txs);
-        self.sync_manager.insert_waiting(txs.into_iter());
+        let reqs = self.sync_manager.remove_timeout_requests(timeout);
+        trace!("Timeout tx requests ({}): {:?}", reqs.len(), reqs);
+
+        // re-request
+        self.sync_manager.insert_waiting(
+            reqs.into_iter().map(|r| r.items.into_iter()).flatten(),
+        );
 
         // trigger cache cleanup
         self.verified.write().get(&Default::default());

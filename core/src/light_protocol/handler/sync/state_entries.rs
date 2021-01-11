@@ -173,8 +173,6 @@ impl StateEntries {
             .or_insert(PendingItem::pending())
             .set(entry);
 
-        self.sync_manager.remove_in_flight(&key);
-
         Ok(())
     }
 
@@ -182,9 +180,13 @@ impl StateEntries {
     pub fn clean_up(&self) {
         // remove timeout in-flight requests
         let timeout = *STATE_ENTRY_REQUEST_TIMEOUT;
-        let entries = self.sync_manager.remove_timeout_requests(timeout);
-        trace!("Timeout state-entries ({}): {:?}", entries.len(), entries);
-        self.sync_manager.insert_waiting(entries.into_iter());
+        let reqs = self.sync_manager.remove_timeout_requests(timeout);
+        trace!("Timeout state-entrie requests ({}): {:?}", reqs.len(), reqs);
+
+        // re-request
+        self.sync_manager.insert_waiting(
+            reqs.into_iter().map(|r| r.items.into_iter()).flatten(),
+        );
 
         // trigger cache cleanup
         self.verified.write().get(&Default::default());

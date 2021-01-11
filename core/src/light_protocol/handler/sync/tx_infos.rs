@@ -381,9 +381,13 @@ impl TxInfos {
     pub fn clean_up(&self) {
         // remove timeout in-flight requests
         let timeout = *TX_INFO_REQUEST_TIMEOUT;
-        let infos = self.sync_manager.remove_timeout_requests(timeout);
-        trace!("Timeout tx-infos ({}): {:?}", infos.len(), infos);
-        self.sync_manager.insert_waiting(infos.into_iter());
+        let reqs = self.sync_manager.remove_timeout_requests(timeout);
+        trace!("Timeout tx-info requests ({}): {:?}", reqs.len(), reqs);
+
+        // re-request
+        self.sync_manager.insert_waiting(
+            reqs.into_iter().map(|r| r.items.into_iter()).flatten(),
+        );
 
         // trigger cache cleanup
         self.verified.write().get(&Default::default());

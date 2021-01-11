@@ -159,7 +159,6 @@ impl Blooms {
             .or_insert(PendingItem::pending())
             .set(bloom);
 
-        self.sync_manager.remove_in_flight(&epoch);
         Ok(())
     }
 
@@ -167,9 +166,13 @@ impl Blooms {
     pub fn clean_up(&self) {
         // remove timeout in-flight requests
         let timeout = *BLOOM_REQUEST_TIMEOUT;
-        let blooms = self.sync_manager.remove_timeout_requests(timeout);
-        trace!("Timeout blooms ({}): {:?}", blooms.len(), blooms);
-        self.sync_manager.insert_waiting(blooms.into_iter());
+        let reqs = self.sync_manager.remove_timeout_requests(timeout);
+        trace!("Timeout bloom requests ({}): {:?}", reqs.len(), reqs);
+
+        // re-request
+        self.sync_manager.insert_waiting(
+            reqs.into_iter().map(|r| r.items.into_iter()).flatten(),
+        );
 
         // trigger cache cleanup
         self.verified.write().get(&Default::default());

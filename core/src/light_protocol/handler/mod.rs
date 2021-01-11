@@ -871,11 +871,11 @@ impl Handler {
         self.tx_infos.sync(io);
     }
 
-    fn clean_up_requests(&self) {
+    fn clean_up_requests(&self, io: &dyn NetworkContext) {
         self.block_txs.clean_up();
         self.blooms.clean_up();
         self.epochs.clean_up();
-        self.headers.clean_up();
+        self.headers.clean_up(io);
         self.receipts.clean_up();
         self.state_entries.clean_up();
         self.state_roots.clean_up();
@@ -1029,7 +1029,7 @@ impl NetworkProtocolHandler for Handler {
         trace!("Timeout: timer={:?}", timer);
         match timer {
             SYNC_TIMER => self.start_sync(io),
-            REQUEST_CLEANUP_TIMER => self.clean_up_requests(),
+            REQUEST_CLEANUP_TIMER => self.clean_up_requests(io),
             LOG_STATISTICS_TIMER => {
                 self.print_stats();
                 self.block_txs.print_stats();

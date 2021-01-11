@@ -166,7 +166,6 @@ impl BlockTxs {
             .or_insert(PendingItem::pending())
             .set(block_txs);
 
-        self.sync_manager.remove_in_flight(&hash);
         Ok(())
     }
 
@@ -174,9 +173,13 @@ impl BlockTxs {
     pub fn clean_up(&self) {
         // remove timeout in-flight requests
         let timeout = *BLOCK_TX_REQUEST_TIMEOUT;
-        let block_txs = self.sync_manager.remove_timeout_requests(timeout);
-        trace!("Timeout block-txs ({}): {:?}", block_txs.len(), block_txs);
-        self.sync_manager.insert_waiting(block_txs.into_iter());
+        let reqs = self.sync_manager.remove_timeout_requests(timeout);
+        trace!("Timeout block-tx requests ({}): {:?}", reqs.len(), reqs);
+
+        // re-request
+        self.sync_manager.insert_waiting(
+            reqs.into_iter().map(|r| r.items.into_iter()).flatten(),
+        );
 
         // trigger cache cleanup
         self.verified.write().get(&Default::default());

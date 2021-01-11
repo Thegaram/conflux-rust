@@ -30,18 +30,21 @@ impl<T> KeyT for T where T: Clone + Eq + Hash {}
 pub trait ItemT<K: KeyT>: Debug + Clone + HasKey<K> + Ord {}
 impl<T, K: KeyT> ItemT<K> for T where T: Debug + Clone + HasKey<K> + Ord {}
 
+#[derive(Debug)]
 pub struct InFlightRequest<T> {
-    items: Vec<T>,
-    id: RequestId,
-    peer: NodeId,
-    sent_at: Instant,
+    pub items: Vec<T>,
+    pub id: RequestId,
+    pub peer: NodeId,
+    pub sent_at: Instant,
 }
 
 impl<T> Default for InFlightRequest<T> {
     fn default() -> Self {
         InFlightRequest {
             items: vec![],
-            ..Default::default()
+            id: Default::default(),
+            peer: Default::default(),
+            sent_at: Instant::now(),
         }
     }
 }
@@ -85,15 +88,15 @@ impl<'a, K: KeyT, I: ItemT<K>> Coordinator<'a, K, I> {
 
 impl<'a, K: KeyT, I: ItemT<K>> Drop for Coordinator<'a, K, I> {
     fn drop(&mut self) {
-        let mut req = Default::default();
-        std::mem::swap(&mut req, &mut self.req);
+        let req = std::mem::take(&mut self.req);
 
         let to_rerequest = req
             .items
             .into_iter()
             .filter(|item| self.to_process.contains(&item.key()));
 
-        self.sync_manager.insert_waiting(to_rerequest)
+        // this is somewhat dangerous because of locking
+        self.sync_manager.insert_waiting(to_rerequest);
     }
 }
 
@@ -119,7 +122,10 @@ impl<Key: KeyT, Item: ItemT<Key>> InFlightRequestManager<Key, Item> {
     fn insert(&mut self, request: InFlightRequest<Item>) {
         for item in &request.items {
             if self.keys.contains(&item.key()) {
-                // TODO
+                warn!(
+                    "Duplicate key in InFlightRequestManager for item {:?}",
+                    item
+                );
             }
 
             self.keys.insert(item.key());
@@ -133,9 +139,7 @@ impl<Key: KeyT, Item: ItemT<Key>> InFlightRequestManager<Key, Item> {
             None => None,
             Some(req) => {
                 for item in &req.items {
-                    if !self.keys.remove(&item.key()) {
-                        // TODO
-                    }
+                    self.keys.remove(&item.key());
                 }
 
                 Some(req)
@@ -237,17 +241,6 @@ impl<Key: KeyT, Item: ItemT<Key>> SyncManager<Key, Item> {
     }
 
     #[inline]
-    pub fn remove_in_flight(&self, key: &Key) {
-        // self.in_flight_old.write().remove(&key);
-        unimplemented!()
-    }
-
-    #[inline]
-    pub fn remove_in_flight_new(&self, id: &RequestId) {
-        self.in_flight.write().remove(&id);
-    }
-
-    #[inline]
     pub fn insert_waiting<I>(&self, items: I)
     where I: Iterator<Item = Item> {
         let in_flight = self.in_flight.read();
@@ -344,29 +337,7 @@ impl<Key: KeyT, Item: ItemT<Key>> SyncManager<Key, Item> {
     }
 
     #[inline]
-    pub fn remove_timeout_requests(&self, timeout: Duration) -> Vec<Item> {
-        // let mut in_flight = self.in_flight_old.write();
-
-        // // collect timed-out requests
-        // let items: Vec<_> = in_flight
-        //     .iter()
-        //     .filter_map(|(_hash, req)| match req.sent_at {
-        //         t if t.elapsed() < timeout => None,
-        //         _ => Some(req.item.clone()),
-        //     })
-        //     .collect();
-
-        // // remove requests from `in_flight`
-        // for item in &items {
-        //     in_flight.remove(&item.key());
-        // }
-
-        // items
-        unimplemented!()
-    }
-
-    #[inline]
-    pub fn remove_timeout_requests_new(
+    pub fn remove_timeout_requests(
         &self, timeout: Duration,
     ) -> Vec<InFlightRequest<Item>> {
         let mut in_flight = self.in_flight.write();

@@ -25,6 +25,40 @@ pub struct FullPeerState {
     pub terminals: HashSet<H256>,
     pub throttled_msgs: ThrottledManager<MsgId>,
     pub unexpected_msgs: TokenBucketManager,
+
+    timeout_statistics: std::collections::VecDeque<u64>,
+}
+
+impl FullPeerState {
+    pub fn on_timeout_should_disconnect(&mut self) -> bool {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        if self.timeout_statistics.is_empty() {
+            self.timeout_statistics.push_back(now);
+            return false;
+        }
+
+        self.timeout_statistics.push_back(now);
+        loop {
+            let old_time = *self.timeout_statistics.front().unwrap();
+            if now - old_time <= 600 {
+                break;
+            }
+            self.timeout_statistics.pop_front();
+        }
+
+        if self.timeout_statistics.len()
+            // <= config.max_allowed_timeout_in_observing_period as usize
+            <= 10
+        {
+            return false;
+        } else {
+            return true;
+        }
+    }
 }
 
 #[derive(Default, DeriveMallocSizeOf)]

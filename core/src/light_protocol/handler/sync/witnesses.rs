@@ -245,23 +245,22 @@ impl Witnesses {
     pub fn validate_and_store(
         &self, item: WitnessInfoWithHeight,
     ) -> Result<()> {
-        let witness = item.height;
-
         // validate and store
         self.handle_witness_info(item)?;
-
-        // signal receipt
-        self.sync_manager.remove_in_flight(&witness);
-
         Ok(())
     }
 
     #[inline]
     pub fn clean_up(&self) {
+        // remove timeout in-flight requestss
         let timeout = *WITNESS_REQUEST_TIMEOUT;
-        let witnesses = self.sync_manager.remove_timeout_requests(timeout);
-        trace!("Timeout witnesses ({}): {:?}", witnesses.len(), witnesses);
-        self.sync_manager.insert_waiting(witnesses.into_iter());
+        let reqs = self.sync_manager.remove_timeout_requests(timeout);
+        trace!("Timeout witness requests ({}): {:?}", reqs.len(), reqs);
+
+        // re-request
+        self.sync_manager.insert_waiting(
+            reqs.into_iter().map(|r| r.items.into_iter()).flatten(),
+        );
     }
 
     #[inline]
