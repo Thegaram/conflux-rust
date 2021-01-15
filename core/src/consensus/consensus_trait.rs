@@ -33,6 +33,8 @@ pub trait ConsensusGraphTrait: Send + Sync {
 
     fn retrieve_old_era_blocks(&self) -> Option<H256>;
 
+    fn old_era_block_set_size(&self) -> usize;
+
     fn construct_pivot_state(&self);
 
     fn best_info(&self) -> Arc<BestInformation>;

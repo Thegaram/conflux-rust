@@ -61,6 +61,7 @@ const REQUEST_CLEANUP_TIMER: TimerToken = 1;
 const LOG_STATISTICS_TIMER: TimerToken = 2;
 const HEARTBEAT_TIMER: TimerToken = 3;
 const TOTAL_WEIGHT_IN_PAST_TIMER: TimerToken = 4;
+const BLOCK_CACHE_GC_TIMER: TimerToken = 5;
 
 /// Handler is responsible for maintaining peer meta-information and
 /// dispatching messages to the query and sync sub-handlers.
@@ -78,6 +79,9 @@ pub struct Handler {
 
     // epoch sync manager
     epochs: Epochs,
+
+    // synchronization graph
+    graph: Arc<SynchronizationGraph>,
 
     // header sync manager
     headers: Arc<Headers>,
@@ -114,6 +118,9 @@ pub struct Handler {
 
     // witness sync manager
     pub witnesses: Arc<Witnesses>,
+
+
+    // latest_epoch_removed: parking_lot::Mutex<u64>,
 }
 
 impl Handler {
@@ -214,6 +221,7 @@ impl Handler {
             blooms,
             consensus,
             epochs,
+            graph,
             headers,
             join_handle,
             peers,
@@ -227,6 +235,8 @@ impl Handler {
             tx_infos,
             txs,
             witnesses,
+
+            // latest_epoch_removed: parking_lot::Mutex::new(0),
         }
     }
 
@@ -961,6 +971,9 @@ impl NetworkProtocolHandler for Handler {
 
         io.register_timer(TOTAL_WEIGHT_IN_PAST_TIMER, Duration::from_secs(20))
             .expect("Error registering total weight in past timer");
+
+        io.register_timer(BLOCK_CACHE_GC_TIMER,Duration::from_millis(500))
+            .expect("Error registering block cache gc timer");
     }
 
     fn on_message(&self, io: &dyn NetworkContext, peer: &NodeId, raw: &[u8]) {
@@ -1049,6 +1062,35 @@ impl NetworkProtocolHandler for Handler {
             }
             TOTAL_WEIGHT_IN_PAST_TIMER => {
                 self.consensus.update_total_weight_delta_heartbeat();
+            }
+            BLOCK_CACHE_GC_TIMER => {
+                self.graph.data_man.cache_gc();
+                self.graph.try_remove_old_era_blocks_from_disk();
+
+                // let stable_hash = self.graph.data_man.get_cur_consensus_era_stable_hash();
+
+                // let stable_height = self.graph.data_man
+                //     .block_header_by_hash(&stable_hash)
+                //     .expect("Current era stable header should exist")
+                //     .height();
+
+                // let from = *self.latest_epoch_removed.lock();
+                // let to = std::cmp::min(stable_height, from + 100);
+
+                // // TODO
+                // // self.consensus.l
+                // // self.graph.latest
+                // for e in from..to {
+                //     if let Some(hashes) = self.graph.data_man.executed_epoch_set_hashes_from_db(e) {
+                //         for h in hashes {
+                //             self.graph.data_man.remove_block_header(&h, true);
+                //         }
+                //     }
+
+                //     self.graph.data_man.remove_executed_epoch_set_hashes(e, true);
+                // }
+
+                // *self.latest_epoch_removed.lock() = to - 1;
             }
             // TODO(thegaram): add other timers (e.g. data_man gc)
             _ => warn!("Unknown timer {} triggered.", timer),

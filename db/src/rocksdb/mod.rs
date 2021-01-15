@@ -24,6 +24,9 @@ extern crate kvdb_rocksdb;
 use self::kvdb_rocksdb::{CompactionProfile, Database, DatabaseConfig};
 use std::{io, path::Path, str::FromStr, sync::Arc};
 
+const KB: usize = 1_024;
+const MB: usize = 1_024 * KB;
+
 pub struct SystemDB {
     // This is the general db that will be shared and used by
     // all the special db at upper layer.
@@ -85,7 +88,10 @@ pub fn db_config(
     let mut db_config = DatabaseConfig::with_columns(columns);
 
     db_config.memory_budget = db_cache_size;
-    db_config.compaction = compaction_profile(&db_compaction, &path);
+    // db_config.compaction = compaction_profile(&db_compaction, &path);
+    db_config.compaction = CompactionProfile::auto(&path);
+    db_config.compaction.block_size = 4 * KB;
+
     db_config.disable_wal = disable_wal;
 
     db_config

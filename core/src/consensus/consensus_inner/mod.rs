@@ -3826,6 +3826,10 @@ impl ConsensusGraphInner {
         self.last_old_era_block_set.lock().pop_front()
     }
 
+    pub fn old_era_block_set_size(&self) -> usize {
+        self.last_old_era_block_set.lock().len()
+    }
+
     /// Finish block recovery and prepare for normal block processing.
     ///
     /// During block recovery, blocks are inserted without block body. If a

@@ -1242,7 +1242,10 @@ impl SynchronizationGraph {
     }
 
     pub fn try_remove_old_era_blocks_from_disk(&self) {
-        let mut num_of_blocks_to_remove = OLD_ERA_BLOCK_GC_BATCH_SIZE;
+        info!("Old era block set size: {}", self.consensus.old_era_block_set_size());
+
+        // let mut num_of_blocks_to_remove = OLD_ERA_BLOCK_GC_BATCH_SIZE;
+        let mut num_of_blocks_to_remove = 500;
         while let Some(hash) = self.consensus.retrieve_old_era_blocks() {
             // only full node should remove blocks and receipts in old eras
             if let NodeType::Full = self.node_type {
@@ -1254,8 +1257,11 @@ impl SynchronizationGraph {
             }
 
             if let NodeType::Light = self.node_type {
+                info!("Removing old-era header: {:?}", hash);
                 self.data_man
                     .remove_block_header(&hash, true /* remove_db */);
+
+                // self.data_man.remove_executed_epoch_set_hashes_from_db()
             }
 
             self.data_man.remove_epoch_execution_context_from_db(&hash);

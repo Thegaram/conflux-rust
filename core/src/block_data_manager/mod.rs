@@ -515,6 +515,13 @@ impl BlockDataManager {
         self.block_headers.write().remove(hash);
     }
 
+    pub fn remove_executed_epoch_set_hashes(&self, e: u64, remove_db: bool) {
+        if remove_db {
+            self.db_manager.remove_executed_epoch_set_hashes_from_db(e);
+        }
+        // self.block_headers.write().remove(hash);
+    }
+
     pub fn block_height_by_hash(&self, hash: &H256) -> Option<u64> {
         let result = self.block_header_by_hash(hash)?;
         Some(result.height())

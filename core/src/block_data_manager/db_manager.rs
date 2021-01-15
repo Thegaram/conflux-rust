@@ -352,6 +352,12 @@ impl DBManager {
         );
     }
 
+    pub fn remove_executed_epoch_set_hashes_from_db(
+        &self, epoch: u64,
+    ) {
+        self.remove_from_db(DBTable::EpochNumbers, &executed_epoch_set_key(epoch)[0..9]);
+    }
+
     pub fn insert_skipped_epoch_set_hashes_to_db(
         &self, epoch: u64, skipped_hashes: &Vec<H256>,
     ) {

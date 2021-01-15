@@ -1148,6 +1148,10 @@ impl ConsensusGraphTrait for ConsensusGraph {
         self.inner.read().pop_old_era_block_set()
     }
 
+    fn old_era_block_set_size(&self) -> usize {
+        self.inner.read().old_era_block_set_size()
+    }
+
     /// construct_pivot_state() rebuild pivot chain state info from db
     /// avoiding intermediate redundant computation triggered by
     /// on_new_block().

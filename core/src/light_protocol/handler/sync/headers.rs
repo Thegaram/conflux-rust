@@ -39,11 +39,23 @@ struct Statistics {
     timeout: u64,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct PeerStats {
     num_requests: usize,
     timeout_requests: usize,
     timeout_items: usize,
+    connected: bool,
+}
+
+impl Default for PeerStats {
+    fn default() -> PeerStats {
+        PeerStats {
+            num_requests: 0,
+            timeout_requests: 0,
+            timeout_items: 0,
+            connected: true,
+        }
+    }
 }
 
 // NOTE: order defines priority: Epoch < Reference < NewHash
@@ -305,6 +317,7 @@ impl Headers {
             if let Some(peer_state) = self.peers.get(&req.peer) {
                 if peer_state.write().on_timeout_should_disconnect() {
                     peers_to_disconnect.insert(req.peer);
+                    s.connected = false;
                 }
             }
         }
