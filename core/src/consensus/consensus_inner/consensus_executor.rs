@@ -1100,7 +1100,8 @@ impl ConsensusExecutionHandler {
         drop(prefetch_join_handles);
 
         let pivot_block = epoch_blocks.last().expect("Epoch not empty");
-        let internal_contract_map = InternalContractMap::new();
+        let internal_contract_map =
+            InternalContractMap::at_block_number(start_block_number); // TODO
         let mut epoch_receipts = Vec::with_capacity(epoch_blocks.len());
         let mut to_pending = Vec::new();
         let mut block_number = start_block_number;
@@ -1673,7 +1674,7 @@ impl ConsensusExecutionHandler {
     pub fn call_virtual(
         &self, tx: &SignedTransaction, epoch_id: &H256, epoch_size: usize,
     ) -> RpcResult<ExecutionOutcome> {
-        let internal_contract_map = InternalContractMap::new();
+        let internal_contract_map = InternalContractMap::at_block_number(0);
         let best_block_header = self.data_man.block_header_by_hash(epoch_id);
         if best_block_header.is_none() {
             bail!("invalid epoch id");

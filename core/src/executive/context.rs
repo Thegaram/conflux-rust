@@ -528,7 +528,7 @@ mod tests {
             );
             let env = get_test_env();
             let spec = machine.spec(env.number);
-            let internal_contract_map = InternalContractMap::new();
+            let internal_contract_map = InternalContractMap::at_block_number(0);
 
             let mut setup = Self {
                 storage_manager,

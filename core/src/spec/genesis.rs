@@ -106,7 +106,8 @@ pub fn initialize_internal_contract_accounts(
 ) {
     || -> DbResult<()> {
         {
-            for address in InternalContractMap::new().keys() {
+            // TODO: what about contracts created later?
+            for address in InternalContractMap::at_block_number(0).keys() {
                 state.new_contract_with_admin(
                     address,
                     /* No admin; admin = */ &Address::zero(),
@@ -441,7 +442,7 @@ fn execute_genesis_transaction(
     transaction: &SignedTransaction, state: &mut State, machine: Arc<Machine>,
 ) {
     let env = Env::default();
-    let internal_contract_map = InternalContractMap::new();
+    let internal_contract_map = InternalContractMap::at_block_number(0);
 
     let options = TransactOptions::with_no_tracing();
     let r = {

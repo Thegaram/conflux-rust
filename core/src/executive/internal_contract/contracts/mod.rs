@@ -3,6 +3,7 @@
 // See http://www.gnu.org/licenses/
 
 mod admin;
+mod context;
 mod sponsor;
 mod staking;
 
@@ -16,7 +17,8 @@ use super::{
 use std::collections::{BTreeMap, HashMap};
 
 pub use self::{
-    admin::AdminControl, sponsor::SponsorWhitelistControl, staking::Staking,
+    admin::AdminControl, context::Context, sponsor::SponsorWhitelistControl,
+    staking::Staking,
 };
 
 use cfx_types::Address;
@@ -81,14 +83,23 @@ impl std::ops::Deref for InternalContractMap {
 }
 
 impl InternalContractMap {
-    pub fn new() -> Self {
+    pub fn at_block_number(block_number: u64) -> Self {
         let mut builtin = BTreeMap::new();
         let admin = internal_contract_factory("admin");
         let sponsor = internal_contract_factory("sponsor");
         let staking = internal_contract_factory("staking");
+        let context = internal_contract_factory("context");
+
         builtin.insert(*admin.address(), admin);
         builtin.insert(*sponsor.address(), sponsor);
         builtin.insert(*staking.address(), staking);
+
+        let context_contract_activation_block_number: u64 = 10; // TODO: read from config
+
+        if block_number > context_contract_activation_block_number {
+            builtin.insert(*context.address(), context);
+        }
+
         Self {
             builtin: Arc::new(builtin),
         }
@@ -107,6 +118,7 @@ pub fn internal_contract_factory(name: &str) -> Box<dyn InternalContractTrait> {
         "admin" => Box::new(AdminControl::instance()),
         "staking" => Box::new(Staking::instance()),
         "sponsor" => Box::new(SponsorWhitelistControl::instance()),
+        "context" => Box::new(Context::instance()),
         _ => panic!("invalid internal contract name: {}", name),
     }
 }

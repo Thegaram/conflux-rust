@@ -122,7 +122,7 @@ fn test_sender_balance() {
     );
     let env = Env::default();
     let machine = make_byzantium_machine(0);
-    let internal_contract_map = InternalContractMap::new();
+    let internal_contract_map = InternalContractMap::at_block_number(0);
     let spec = machine.spec(env.number);
     let mut substate = Substate::new();
 
@@ -219,7 +219,7 @@ fn test_create_contract_out_of_depth() {
 
     let env = Env::default();
     let machine = make_byzantium_machine(0);
-    let internal_contract_map = InternalContractMap::new();
+    let internal_contract_map = InternalContractMap::at_block_number(0);
     let spec = machine.spec(env.number);
 
     let storage_manager = new_state_manager_for_unit_test();
@@ -281,7 +281,7 @@ fn test_suicide_when_creation() {
 
     let env = Env::default();
     let machine = make_byzantium_machine(0);
-    let internal_contract_map = InternalContractMap::new();
+    let internal_contract_map = InternalContractMap::at_block_number(0);
     let spec = machine.spec(env.number);
 
     let storage_manager = new_state_manager_for_unit_test();
@@ -375,7 +375,7 @@ fn test_call_to_create() {
 
     let env = Env::default();
     let machine = make_byzantium_machine(5);
-    let internal_contract_map = InternalContractMap::new();
+    let internal_contract_map = InternalContractMap::at_block_number(0);
     let spec = machine.spec(env.number);
 
     let storage_manager = new_state_manager_for_unit_test();
@@ -444,7 +444,7 @@ fn test_revert() {
 
     let env = Env::default();
     let machine = make_byzantium_machine(0);
-    let internal_contract_map = InternalContractMap::new();
+    let internal_contract_map = InternalContractMap::at_block_number(0);
     let spec = machine.spec(env.number);
     let mut substate = Substate::new();
 
@@ -528,7 +528,7 @@ fn test_keccak() {
 
     let env = Env::default();
     let machine = make_byzantium_machine(0);
-    let internal_contract_map = InternalContractMap::new();
+    let internal_contract_map = InternalContractMap::at_block_number(0);
     let spec = machine.spec(env.number);
 
     let storage_manager = new_state_manager_for_unit_test();
@@ -581,7 +581,7 @@ fn test_not_enough_cash() {
     let mut env = Env::default();
     env.gas_limit = U256::from(100_000);
     let machine = make_byzantium_machine(0);
-    let internal_contract_map = InternalContractMap::new();
+    let internal_contract_map = InternalContractMap::at_block_number(0);
     let spec = machine.spec(env.number);
 
     let storage_manager = new_state_manager_for_unit_test();
@@ -636,7 +636,7 @@ fn test_deposit_withdraw_lock() {
     let mut state = get_state_for_genesis_write(&storage_manager);
     let env = Env::default();
     let machine = make_byzantium_machine(0);
-    let internal_contract_map = InternalContractMap::new();
+    let internal_contract_map = InternalContractMap::at_block_number(0);
     let spec = machine.spec(env.number);
     let mut substate = Substate::new();
     state
@@ -1225,7 +1225,7 @@ fn test_commission_privilege() {
     let mut env = Env::default();
     env.gas_limit = U256::MAX;
     let machine = make_byzantium_machine(0);
-    let internal_contract_map = InternalContractMap::new();
+    let internal_contract_map = InternalContractMap::at_block_number(0);
     let spec = machine.spec(env.number);
 
     let sender = Random.generate().unwrap();
@@ -1602,7 +1602,7 @@ fn test_storage_commission_privilege() {
     let mut env = Env::default();
     env.gas_limit = U256::MAX;
     let machine = make_byzantium_machine(0);
-    let internal_contract_map = InternalContractMap::new();
+    let internal_contract_map = InternalContractMap::at_block_number(0);
     let spec = machine.spec(env.number);
 
     let sender = Random.generate().unwrap();

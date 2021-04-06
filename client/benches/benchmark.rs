@@ -48,7 +48,7 @@ fn txexe_benchmark(c: &mut Criterion) {
     let tx = tx.sign(kp.secret());
     let machine =
         new_machine_with_builtin(Default::default(), VmFactory::new(1024 * 32));
-    let internal_contract_map = InternalContractMap::new();
+    let internal_contract_map = InternalContractMap::at_block_number(0);
     let env = Env {
         number: 0,
         author: Default::default(),
